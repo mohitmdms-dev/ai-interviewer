@@ -1,0 +1,98 @@
+.app-container {
+  background-color: #f0f2f5;
+  min-height: 100vh;
+  padding: 40px;
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.dashboard-card {
+  background: white;
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 30px;
+  border-top: 8px solid #003366; 
+  border-radius: 10px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  text-align: center;
+}
+
+.header-title { color: #003366; margin-bottom: 5px; }
+
+.university-name {
+  color: #666;
+  font-size: 0.9rem;
+  margin-bottom: 30px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+}
+
+.question-box {
+  background-color: #eef6ff;
+  padding: 20px;
+  border-radius: 8px;
+  margin: 20px 0;
+  border-left: 5px solid #007bff;
+  text-align: left;
+}
+
+.answer-area {
+  width: 100%;
+  border: 1px solid #ccc;
+  border-radius: 5px;
+  padding: 15px;
+  font-size: 16px;
+  margin-top: 10px;
+  box-sizing: border-box;
+}
+
+.btn-mic {
+  display: block;
+  margin: 15px auto;
+  padding: 12px 20px;
+  border-radius: 50px;
+  border: 2px solid #007bff;
+  background-color: white;
+  color: #007bff;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-mic.listening {
+  background-color: #ff4d4d;
+  color: white;
+  border-color: #ff4d4d;
+  animation: pulse 1.5s infinite;
+}
+
+.btn-group {
+  margin-top: 20px;
+  display: flex;
+  justify-content: center;
+  gap: 15px;
+}
+
+.btn {
+  padding: 12px 25px;
+  border: none;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.btn-next { background: #007bff; color: white; }
+.btn-submit { background: #28a745; color: white; }
+
+.feedback-box {
+  margin-top: 30px;
+  padding: 20px;
+  background: #fff3cd;
+  border-radius: 8px;
+  color: #856404;
+  text-align: left;
+}
+
+@keyframes pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.05); }
+  100% { transform: scale(1); }
+}
