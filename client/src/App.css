@@ -1062,3 +1062,263 @@ body{
   .iv-input{padding:14px 18px 20px;}
   .iv-fb{padding:16px 18px;}
 }
+
+/* =========================================================
+   MODE TABS (landing screen)
+   ========================================================= */
+.land-mode-tabs{
+  display:grid;
+  grid-template-columns:repeat(3,1fr);
+  gap:10px;
+  margin-bottom:18px;
+}
+.mode-tab{
+  display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:14px 10px;
+  background:var(--bg3);
+  border:1.5px solid var(--border);
+  border-radius:var(--r);
+  cursor:pointer;transition:all .17s;
+  font-family:'Inter',sans-serif;
+}
+.mode-tab:hover{border-color:var(--border2);background:var(--bg4);}
+.mode-tab.on{border-color:var(--acc);background:rgba(91,157,255,.08);}
+.mode-tab-icon{font-size:20px;line-height:1;}
+.mode-tab-label{font-size:12px;font-weight:600;color:var(--ink);}
+.mode-tab-desc{font-size:10px;color:var(--ink3);text-align:center;line-height:1.4;}
+.mode-tab.on .mode-tab-label{color:var(--acc);}
+
+/* =========================================================
+   GD TOPIC CONTROL
+   ========================================================= */
+.gd-topic-ctrl{}
+.gd-topic-body{display:flex;flex-direction:column;gap:10px;}
+.gd-topic-toggle{display:flex;gap:0;}
+.gd-topic-select{
+  width:100%;padding:9px 12px;
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r2);color:var(--ink);
+  font-family:'Inter',sans-serif;font-size:13px;
+  cursor:pointer;outline:none;
+}
+.gd-topic-select:focus{border-color:var(--acc);}
+.gd-topic-input{
+  width:100%;padding:9px 12px;
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--r2);color:var(--ink);
+  font-family:'Inter',sans-serif;font-size:13px;
+  outline:none;
+}
+.gd-topic-input:focus{border-color:var(--acc);}
+.gd-topic-input::placeholder{color:var(--ink3);}
+
+/* GD and Stress CTA variants */
+.land-cta.gd-cta{background:linear-gradient(135deg,#6c63ff,#5b9dff);}
+.land-cta.gd-cta:hover:not(.off){background:linear-gradient(135deg,#5a52d5,#4a8ae8);}
+.land-cta.stress-cta{background:linear-gradient(135deg,#ff5f5f,#e0502e);}
+.land-cta.stress-cta:hover:not(.off){background:linear-gradient(135deg,#e04040,#c43020);}
+
+/* =========================================================
+   GD SIDEBAR
+   ========================================================= */
+.gd-side{border-right-color:rgba(108,99,255,.25);}
+.gd-logo path,
+.gd-logo circle{stroke:var(--acc);}
+.gd-logo{background:rgba(108,99,255,.15)!important;border-color:rgba(108,99,255,.3)!important;}
+
+.gd-topic-card{
+  padding:12px 14px;
+  background:rgba(108,99,255,.1);
+  border:1px solid rgba(108,99,255,.22);
+  border-radius:var(--r2);
+  margin:0 14px 12px;
+}
+.gd-topic-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:#9b95ff;margin-bottom:5px;}
+.gd-topic-text{font-size:12px;color:var(--ink2);line-height:1.5;font-style:italic;}
+
+.gd-personas{padding:0 14px 12px;}
+.gd-personas-label{font-size:10px;font-weight:600;letter-spacing:.1em;text-transform:uppercase;color:var(--ink3);margin-bottom:8px;}
+.gd-persona-item{display:flex;align-items:center;gap:9px;margin-bottom:8px;}
+.gd-persona-av{
+  width:28px;height:28px;border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  font-size:11px;font-weight:700;color:#fff;flex-shrink:0;
+}
+.you-item .you-av{background:var(--bg4);border:1.5px dashed var(--border2);color:var(--ink3);}
+.gd-persona-name{display:block;font-size:12px;font-weight:600;color:var(--ink);line-height:1.2;}
+.gd-persona-stance{display:block;font-size:10px;color:var(--ink3);line-height:1.3;}
+
+/* =========================================================
+   GD CHAT STYLES
+   ========================================================= */
+.gd-msgs{background:var(--bg);}
+.gd-badge{
+  background:rgba(108,99,255,.18);
+  color:#a09cff;
+  border-color:rgba(108,99,255,.3);
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+}
+.gd-status{color:var(--ink2);}
+
+.gd-panel-msg{}
+.gd-panel-msg .msg-body{background:rgba(108,99,255,.1);border-color:rgba(108,99,255,.2);}
+.gd-av{
+  font-size:10px;font-weight:700;
+  width:34px;height:34px;
+  border-radius:50%;
+  display:flex;align-items:center;justify-content:center;
+  color:#fff;
+  flex-shrink:0;
+  margin-top:3px;
+}
+.you-av-sm{
+  background:var(--bg4)!important;
+  border:1.5px solid var(--border2)!important;
+  color:var(--ink2)!important;
+}
+.msg-speaker{
+  font-size:10px;font-weight:700;color:#a09cff;
+  margin-bottom:3px;letter-spacing:.05em;text-transform:uppercase;
+}
+
+.gd-input{}
+.gd-hint{color:var(--ink3);}
+
+/* GD result panel */
+.gd-result{border-top-color:rgba(108,99,255,.3);}
+.gd-result-label{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:#a09cff;margin-bottom:10px;
+}
+
+/* =========================================================
+   STRESS SIDEBAR
+   ========================================================= */
+.stress-side{border-right-color:rgba(255,95,95,.2);}
+.stress-logo{background:rgba(255,95,95,.12)!important;border-color:rgba(255,95,95,.25)!important;}
+.stress-logo path,.stress-logo circle{stroke:var(--red);}
+
+.stress-info-card{
+  margin:0 14px 12px;
+  padding:12px 14px;
+  background:rgba(255,95,95,.07);
+  border:1px solid rgba(255,95,95,.18);
+  border-radius:var(--r2);
+}
+.stress-info-title{
+  font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+  color:var(--red);margin-bottom:8px;
+}
+.stress-info-list{
+  list-style:none;padding:0;
+  display:flex;flex-direction:column;gap:5px;
+}
+.stress-info-list li{
+  font-size:11.5px;color:var(--ink2);line-height:1.4;
+  padding-left:12px;position:relative;
+}
+.stress-info-list li::before{
+  content:'-';position:absolute;left:0;color:var(--red);font-size:10px;
+}
+
+.stress-tips{
+  margin:0 14px 12px;
+  padding:11px 13px;
+  background:rgba(255,193,7,.05);
+  border:1px solid rgba(255,193,7,.15);
+  border-radius:var(--r2);
+}
+.stress-tip-label{font-size:10px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:rgba(255,193,7,.7);margin-bottom:5px;}
+.stress-tip-text{font-size:11px;color:var(--ink2);line-height:1.5;}
+
+/* =========================================================
+   STRESS CHAT STYLES
+   ========================================================= */
+.stress-msgs{background:var(--bg);}
+.stress-badge{
+  background:rgba(255,95,95,.12);
+  color:#ff8f8f;
+  border-color:rgba(255,95,95,.25);
+  font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+}
+.stress-status{color:var(--ink2);}
+
+.stress-ai-msg .msg-body{
+  background:rgba(255,95,95,.07);
+  border-color:rgba(255,95,95,.18);
+}
+.stress-av{
+  background:rgba(255,95,95,.15)!important;
+  border:1px solid rgba(255,95,95,.25)!important;
+  color:var(--red)!important;
+  font-size:10px!important;
+  font-weight:700!important;
+}
+.stress-bubble span{background:var(--red)!important;opacity:.7;}
+.stress-speak-bar{border-color:rgba(255,95,95,.2)!important;background:rgba(255,95,95,.06)!important;}
+
+/* Stress score bar fill */
+.stress-fill{background:linear-gradient(90deg,var(--red),#ff8f8f)!important;}
+
+.stress-result{border-top-color:rgba(255,95,95,.3);}
+.stress-result-label{
+  font-size:10px;font-weight:700;letter-spacing:.12em;text-transform:uppercase;
+  color:#ff8f8f;margin-bottom:10px;
+}
+.stress-input{}
+
+@media(max-width:860px){
+  .land-mode-tabs{grid-template-columns:1fr;gap:8px;}
+  .gd-side,.stress-side{display:none;}
+}
+
+.interrupt-bar{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 18px;
+  background:rgba(91,157,255,.07);
+  border:1.5px solid rgba(91,157,255,.25);
+  border-radius:var(--r);
+  margin-bottom:10px;
+  animation:fadein .2s ease;
+}
+.speak-bar-left{display:flex;flex-direction:column;gap:2px;flex:1;}
+.speak-hint{font-size:11px;color:var(--acc);font-weight:500;opacity:.8;}
+.speak-bar-btns{display:flex;align-items:center;gap:8px;flex-shrink:0;}
+.btn-interrupt{
+  display:flex;align-items:center;gap:7px;
+  padding:9px 16px;
+  background:var(--acc);
+  border:none;border-radius:var(--r2);
+  color:#fff;font-family:'Inter',sans-serif;
+  font-size:13px;font-weight:600;
+  cursor:pointer;transition:background .15s;
+  animation:recpulse 1.4s ease infinite;
+}
+.btn-interrupt:hover{background:var(--acc2);}
+.btn-interrupt .rec-dot{
+  width:7px;height:7px;border-radius:50%;
+  background:#fff;flex-shrink:0;
+  animation:pulse .8s ease infinite;
+}
+
+.fb-filler{
+  display:flex;align-items:center;gap:10px;
+  padding:9px 14px;
+  background:rgba(255,193,7,.08);
+  border:1px solid rgba(255,193,7,.25);
+  border-radius:var(--r2);
+  margin-bottom:10px;
+}
+.fb-filler.hi{
+  background:rgba(224,85,85,.08);
+  border-color:rgba(224,85,85,.3);
+}
+.fb-filler-icon{
+  font-size:13px;font-weight:700;
+  color:#f5c842;
+  flex-shrink:0;
+}
+.fb-filler.hi .fb-filler-icon{ color:#e05555; }
+.fb-filler-text{
+  font-size:12px;color:var(--muted);line-height:1.4;
+}
