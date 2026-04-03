@@ -78,6 +78,49 @@ function detectFillers(text) {
   return {count: total, words: words};
 }
 
+var STORAGE_KEY = 'practiceroom_sessions';
+
+function loadSessions() {
+  try {
+    var raw = localStorage.getItem(STORAGE_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch (e) {
+    return [];
+  }
+}
+
+function saveSession(session) {
+  try {
+    var all = loadSessions();
+    all.unshift(session);
+    if (all.length > 20) all = all.slice(0, 20);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch (e) {
+  }
+}
+
+function deleteSession(id) {
+  try {
+    var all = loadSessions().filter(function(s) {
+      return s.id !== id;
+    });
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(all));
+  } catch (e) {
+  }
+}
+
+function formatDate(iso) {
+  try {
+    var d = new Date(iso);
+    return d.toLocaleDateString(
+               'en-IN', {day: 'numeric', month: 'short', year: 'numeric'}) +
+        ' ' +
+        d.toLocaleTimeString('en-IN', {hour: '2-digit', minute: '2-digit'});
+  } catch (e) {
+    return iso;
+  }
+}
+
 function pickVoice() {
   var vs = window.speechSynthesis.getVoices();
   return (vs.find(function(v) {
@@ -132,7 +175,6 @@ function speakNatural(text, opts) {
       resolve();
       return;
     }
-
     var chunks = (clean.match(/[^.!?;:]+[.!?;:]+|[^.!?;:]+$/g) || [clean])
                      .map(function(c) {
                        return c.trim();
@@ -140,26 +182,22 @@ function speakNatural(text, opts) {
                      .filter(function(c) {
                        return c.length > 1;
                      });
-
     var voice = pickVoice();
     var idx = 0;
     var cancelled = false;
     var keepAliveTimer = null;
-
     function keepAlive() {
       if (cancelled || !s.speaking) return;
       s.pause();
       s.resume();
       keepAliveTimer = setTimeout(keepAlive, 10000);
     }
-
     function done() {
       cancelled = true;
       clearTimeout(keepAliveTimer);
       if (onDone) onDone();
       resolve();
     }
-
     function next() {
       if (cancelled) return;
       if (idx >= chunks.length) {
@@ -245,7 +283,6 @@ function useContinuousVoice(onChange) {
     langIdx.current = 0;
     clearTimeout(retryT.current);
     clearTimeout(silenceT.current);
-
     function boot() {
       if (!active.current) return;
       try {
@@ -255,12 +292,10 @@ function useContinuousVoice(onChange) {
         r.continuous = true;
         r.interimResults = true;
         r.maxAlternatives = 3;
-
         r.onresult = function(e) {
           clearTimeout(silenceT.current);
           var finals = '';
           var interim = '';
-
           for (var i = e.resultIndex; i < e.results.length; i++) {
             var result = e.results[i];
             if (result.isFinal) {
@@ -276,7 +311,6 @@ function useContinuousVoice(onChange) {
               interim += result[0].transcript;
             }
           }
-
           if (finals) {
             committed.current =
                 cleanTranscript(committed.current + ' ' + finals);
@@ -284,17 +318,14 @@ function useContinuousVoice(onChange) {
           var display = cleanTranscript(
               committed.current + (interim ? ' ' + interim : ''));
           cbRef.current(display);
-
           silenceT.current = setTimeout(function() {
             if (!active.current) return;
           }, 8000);
         };
-
         r.onend = function() {
           if (!active.current) return;
           retryT.current = setTimeout(boot, 100);
         };
-
         r.onerror = function(ev) {
           if (!active.current) return;
           if (ev.error === 'aborted') return;
@@ -312,7 +343,6 @@ function useContinuousVoice(onChange) {
           }
           retryT.current = setTimeout(boot, ev.error === 'network' ? 600 : 180);
         };
-
         r.start();
       } catch (err) {
         retryT.current = setTimeout(boot, 300);
@@ -408,7 +438,7 @@ export default function App() {
   var s21 = useState(uid);
   var sid = s21[0];
 
-  var sa0 = useState('Technical');
+  var sa0 = useState('interview');
   var gdMode = sa0[0];
   var setGdMode = sa0[1];
   var sa1 = useState(GD_TOPICS[0]);
@@ -462,6 +492,15 @@ export default function App() {
   var sb6 = useState(false);
   var stressSpk = sb6[0];
   var setStressSpk = sb6[1];
+
+  var sd0 = useState(function() {
+    return loadSessions();
+  });
+  var pastSessions = sd0[0];
+  var setPastSessions = sd0[1];
+  var sd1 = useState(false);
+  var showHistory = sd1[0];
+  var setShowHistory = sd1[1];
 
   var pendingR = useRef(false);
   var audioR = useRef(true);
@@ -570,7 +609,7 @@ export default function App() {
       });
       setFeedback(res.data.data);
       setHistory(function(p) {
-        return p.concat([Object.assign(
+        var updated = p.concat([Object.assign(
             {
               questionNumber: s,
               area: (pl && pl.area) || '',
@@ -578,6 +617,25 @@ export default function App() {
               whyThisQuestion: (pl && pl.whyThisQuestion) || '',
             },
             res.data.data)]);
+        if (s === TOTAL_QUESTIONS) {
+          var tot = updated.reduce(function(a, b) {
+            return a + (b.totalScore || 0);
+          }, 0);
+          var session = {
+            id: uid(),
+            date: new Date().toISOString(),
+            mode: 'interview',
+            itype: itype,
+            diff: diff,
+            level: level,
+            totalScore: tot,
+            maxScore: TOTAL_QUESTIONS * 10,
+            questions: updated,
+          };
+          saveSession(session);
+          setPastSessions(loadSessions());
+        }
+        return updated;
       });
     } catch (err) {
       addMsg('sys', 'Error grading.');
@@ -1177,15 +1235,13 @@ export default function App() {
                       return h.aiDetected;
                     })
                     .length;
-  var tColor = tLeft > 240 ? 'var(--ink)' :
-      tLeft > 90           ? '#f0a030' :
-                             'var(--red)';
-  var gdTColor = gdTLeft > 300 ? 'var(--ink)' :
+  var tColor = tLeft > 240 ? 'var(--acc)' : tLeft > 90 ? '#f0a030' : '#e05555';
+  var gdTColor = gdTLeft > 300 ? 'var(--acc)' :
       gdTLeft > 90             ? '#f0a030' :
-                                 'var(--red)';
-  var sTColor = sTLeft > 240 ? 'var(--ink)' :
+                                 '#e05555';
+  var sTColor = sTLeft > 240 ? 'var(--acc)' :
       sTLeft > 90            ? '#f0a030' :
-                               'var(--red)';
+                               '#e05555';
   var allRes = history.reduce(function(a, h) {
     return a.concat(h.resources || []);
   }, []);
@@ -1211,7 +1267,6 @@ export default function App() {
       selLv ? selLv.label : ''} / {itype} / {diff}</p>
             <h1 className="res-title">Complete.</h1>
           </div>
-
           <div className="res-score a1">
             <span className="res-big">{total}</span>
             <span className='res-denom'>/{maxScore}</span>
@@ -1219,11 +1274,9 @@ export default function App() {
               {pct >= 85 ? 'Outstanding performance.' : pct >= 70 ? 'Strong candidate.' : pct >= 50 ? 'Room to develop.' : 'Significant gaps identified.'}
             </span>
           </div>
-
           {aiFlags > 0 && (
             <p className='res-ai-note a2'>{aiFlags} response{aiFlags > 1 ? 's' : ''} flagged for AI-generated content</p>
           )}
-
           <div className="res-bars a2">
             {[
               { l: 'Know',  k: 'knowledgeScore',  w: '80%' },
@@ -1244,7 +1297,6 @@ export default function App() {
               );
             })}
           </div>
-
           <div className='res-qs a3'>
             {history.map(function(item, i) {
               return (
@@ -1272,7 +1324,6 @@ export default function App() {
             })
   }
   </div>
-
           <div className="res-prep-section a4">
             <div className="res-prep-header">
               <div className="res-prep-icon">
@@ -1342,7 +1393,6 @@ export default function App() {
   })
 }
           </div>
-
           <div className="res-actions a5">
             <button className="res-ghost" onClick={restart}>New Session</button>
             <button className='res-dl' onClick={downloadPDF}>Download Report</button>
@@ -1388,10 +1438,10 @@ export default function App() {
                 <svg viewBox = '0 0 12 12'>
                 <path d = 'M2 6h8M6 2v8' strokeLinecap = 'round' />
                 </svg>
-            </div><span className = 'ivs-name'>AI
-                    Interviewer</span>
-          </div>
-                <div className = 'ivs-prog'><div className = 'ivs-prog-bar'>
+            </div><span className = 'ivs-name'>Practice
+                    Room</span>
+          </div><div className = 'ivs-prog'>
+                <div className = 'ivs-prog-bar'>
                 <div className = 'ivs-prog-fill' style = {
                   {
     width: progPct + '%'
@@ -1432,7 +1482,6 @@ export default function App() {
             <button className='ivs-btn danger' onClick={skip}>Skip Question</button>
           </div>
         </aside>
-
         <main className="iv-main">
           <div className="iv-topbar">
             <div className="ivt-left">
@@ -1443,7 +1492,6 @@ export default function App() {
             </div>
             {curPlan ? <span className='ivt-topic'>{curPlan.area}</span> : null}
           </div>
-
           <div className='iv-msgs'>
             {msgs.length === 0 && (
               <div className='msgs-empty'>
@@ -1480,7 +1528,6 @@ export default function App() {
             )}
             <div ref={endR}></div>
           </div>
-
           {feedback && (
             <div className="iv-fb">
               {feedback.aiDetected ? <p className="fb-ai">{feedback.aiFlagReason}</p> : null}
@@ -1493,10 +1540,10 @@ export default function App() {
                 </div>
                 <div className='fb-metrics'>
                   {[
-                    { l: 'Knowledge', k: feedback.knowledgeScore },
+                    { l: 'Knowledge',  k: feedback.knowledgeScore },
                     { l: 'Confidence', k: feedback.confidenceScore },
-                    { l: 'Relevance', k: feedback.resumeAlignment },
-                    { l: 'Depth', k: feedback.depth },
+                    { l: 'Relevance',  k: feedback.resumeAlignment },
+                    { l: 'Depth',      k: feedback.depth },
                   ].map(function(m, i) {
     return (
         <div key = {i} className = 'fb-metric'><span>{m.l} <
@@ -1534,7 +1581,6 @@ export default function App() {
               </button>
             </div>
           )}
-
           {!feedback && started && (
             <div className='iv-input'>
               {speaking && !listening && (
@@ -1646,12 +1692,10 @@ export default function App() {
             </div>
             <span className='ivs-name'>Group Discussion</span>
           </div>
-
           <div className='gd-topic-card'>
             <p className='gd-topic-label'>Topic</p>
             <p className="gd-topic-text">{activeTopic}</p>
           </div>
-
           <div className="gd-personas">
             <p className="gd-personas-label">Participants</p>
             {gdPersonasR.current.map(function(p, i) {
@@ -1679,7 +1723,6 @@ export default function App() {
             </div>
             </div><
             /div>
-
           <div className="ivs-bottom">
             {gdTimerOn && !gdDone && (
               <div className="ivs-timer" style={{ color: gdTColor }}>
@@ -1693,7 +1736,6 @@ export default function App() {
             )}
           </div>
         </aside>
-
         <main className='iv-main'>
           <div className='iv-topbar'>
             <div className='ivt-left'>
@@ -1704,7 +1746,6 @@ export default function App() {
             </div>
             <span className="ivt-topic gd-badge">GD Round</span>
           </div>
-
           <div className="iv-msgs gd-msgs">
             {gdMsgs.map(function(m, i) {
               if (m.role === 'sys') {
@@ -1753,7 +1794,6 @@ export default function App() {
             )}
             <div ref={gdEndR}></div>
           </div>
-
           {
     gdResult &&
         (<div className = 'iv-fb gd-result'>
@@ -1768,10 +1808,10 @@ export default function App() {
              </div>
                 <div className="fb-metrics">
                   {[
-                    { l: 'Init', k: gdResult.initiationScore },
+                    { l: 'Init',    k: gdResult.initiationScore },
                     { l: 'Content', k: gdResult.contentScore },
-                    { l: 'Lead', k: gdResult.leadershipScore },
-                    { l: 'Comm', k: gdResult.communicationScore },
+                    { l: 'Lead',    k: gdResult.leadershipScore },
+                    { l: 'Comm',    k: gdResult.communicationScore },
                   ].map(function(m, i) {
                     return (
                       <div key={i} className="fb-metric">
@@ -1803,18 +1843,19 @@ export default function App() {
               <button className='fb-next' onClick={restart}>Back to Home</button>
             </div>
           )}
-
-          {!gdResult && !gdDone && (
-            <div className='iv-input gd-input'>
-              {gdSpk && !listening && (
-                <div className='speak-bar interrupt-bar'>
-                  <div className='speak-waves'>
-                    <span></span><span></span><span></span><span></span><span></span>
+          {
+  !gdResult && !gdDone &&
+      (<div className = 'iv-input gd-input'>{
+          gdSpk && !listening &&
+          (<div className = 'speak-bar interrupt-bar'>
+           <div className = 'speak-waves'><span></span><span></span><span>
+           </span><span></span><span></span>
                   </div>
-                  <div className='speak-bar-left'>
-                    <span className='speak-lbl'>Panel is speaking</span>
+           <div className = 'speak-bar-left'>
+           <span className = 'speak-lbl'>Panel is speaking<
+               /span>
                     <span className="speak-hint">Interrupt to make your point now</span>
-                  </div>
+           </div>
                   <div className="speak-bar-btns">
                     <button className="btn-interrupt" onClick={function() {
                       gdStopSpeak();
@@ -1824,16 +1865,14 @@ export default function App() {
                       gdVoice.start();
                     }}>
                       <span className="rec-dot"></span>
-                      Speak Now
-                    </button>
+               Speak Now<
+                   /button>
                     <button className="speak-stop" onClick={gdStopSpeak}>Skip</button>
-                  </div>
-                </div>
-              )}
-              {(!gdSpk || listening) && (
+           </div>
+                </div>)} {(!gdSpk || listening) && (
                 <div className={'voice-wrap' + (listening ? ' rec' : '')}>
                   <div
-    ref = {gdEditR} className = 'voice-field'
+        ref = {gdEditR} className = 'voice-field'
                     contentEditable={!listening}
                     suppressContentEditableWarning={true}
                     onInput={
@@ -1880,9 +1919,9 @@ export default function App() {
                     )}
                     {hasGdAns && !listening ? (
                       <button className="btn-action" onClick={function() { setTx(''); if (gdEditR.current) gdEditR.current.textContent = ''; }}>Clear</button>
-                    ) : null}
-                    {hasGdAns && !listening ? (
-                      <button
+                    ) : null
+      } {
+        hasGdAns && !listening ? (< button
                         className={'btn-action primary' + (gdTyping ? ' off' : '')}
                         onClick={gdTyping ? undefined : submitGdAnswer}
                       >
@@ -1919,7 +1958,6 @@ export default function App() {
             </div>
             <span className='ivs-name'>Stress Interview</span>
           </div>
-
           <div className='stress-info-card'>
             <p className='stress-info-title'>What to expect</p>
             <ul className="stress-info-list">
@@ -1930,17 +1968,10 @@ export default function App() {
               <li>Stay calm. Hold your ground.</li>
             </ul>
           </div>
-
-          <div className='stress-tips'>
-            <p className='stress-tip-label'>Tip</p>
-            <p className="stress-tip-text">
-              Do not apologise or fold under pressure. Acknowledge the challenge calmly and restate your position with evidence.
-            </p>
-          </div>
-
-          <div className="ivs-bottom">
+          <div className='ivs-bottom'>
             {sTimerOn && !stressDone && (
-              <div className="ivs-timer" style={{ color: sTColor }}>
+              <div className='ivs-timer' style={{
+      color: sTColor }}>
                 {Math.floor(sTLeft / 60)}:{String(sTLeft % 60).padStart(2, '0')}
               </div>
             )}
@@ -1951,7 +1982,6 @@ export default function App() {
             )}
           </div>
         </aside>
-
         <main className='iv-main'>
           <div className='iv-topbar'>
             <div className='ivt-left'>
@@ -1962,7 +1992,6 @@ export default function App() {
             </div>
             <span className="ivt-topic stress-badge">Stress Round</span>
           </div>
-
           <div className="iv-msgs stress-msgs">
             {stressMsgs.map(function(m, i) {
               if (m.role === 'sys') {
@@ -1973,32 +2002,29 @@ export default function App() {
                 );
               }
               return (
-                <div key={i} className={'msg' + (m.role === 'you' ? ' you' : ' stress-ai-msg')}>
-                  <div className={'msg-av' + (m.role !== 'you' ? ' stress-av' : '')}>
-                    {m.role === 'you' ? 'You' : 'IV'}
-                  </div>
+                <div key={i} className={'msg' + (m.role === 'you' ? ' you' : '')}>
+                  <div className="msg-av">{m.role === 'ai' ? 'IV' : 'You'}</div>
                   <div className='msg-body'>
                     <p className='msg-text'>{m.content}</p>
                     <p className="msg-ts">{m.ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
                   </div>
                 </div>
               );
-            })}
+      })}
             {stressTyp && (
               <div className='typing-row'>
-                <div className='typing-av stress-av'>IV</div>
-                <div className="typing-bubble stress-bubble">
+                <div className='typing-av stress-typing-av'>IV</div>
+                <div className="typing-bubble">
                   <span></span><span></span><span></span>
                 </div>
               </div>
             )}
             <div ref={sEndR}></div>
           </div>
-
           {
   stressRes &&
       (<div className = 'iv-fb stress-result'>
-           <p className = 'stress-result-label'>Composure Report<
+           <p className = 'stress-result-label'>Stress Evaluation<
                /p>
               <div className="fb-row">
                 <div className="fb-score">
@@ -2009,10 +2035,10 @@ export default function App() {
            </div>
                 <div className="fb-metrics">
                   {[
-                    { l: 'Calm', k: stressRes.composureScore },
-                    { l: 'Assert', k: stressRes.assertivenessScore },
+                    { l: 'Calm',     k: stressRes.composureScore },
+                    { l: 'Assert',   k: stressRes.assertivenessScore },
                     { l: 'Recovery', k: stressRes.recoveryScore },
-                    { l: 'Auth', k: stressRes.authenticityScore },
+                    { l: 'Auth',     k: stressRes.authenticityScore },
                   ].map(function(m, i) {
                     return (
                       <div key={i} className="fb-metric">
@@ -2032,9 +2058,8 @@ export default function App() {
               </div>
               <div className='fb-text'>
                 <p className='fb-main'>{stressRes.feedback}</p>
-                {stressRes.strengths ? <p className="fb-good">{stressRes.strengths}</p> : null
-          }
-          {stressRes.improvement ? <p className='fb-tip'>{stressRes.improvement}</p> : null}
+                {stressRes.strengths ? <p className="fb-good">{stressRes.strengths}</p> : null}
+                {stressRes.improvement ? <p className='fb-tip'>{stressRes.improvement}</p> : null}
               </div>
               {stressRes.resources && stressRes.resources.length > 0 && (
                 <div className='fb-links'>
@@ -2046,7 +2071,6 @@ export default function App() {
               <button className='fb-next' onClick={restart}>Back to Home</button>
             </div>
           )}
-
           {!stressRes && !stressDone && (
             <div className='iv-input stress-input'>
               {stressSpk && (
@@ -2126,15 +2150,75 @@ export default function App() {
             <div className='land-logo'>
               <svg viewBox='0 0 16 16'><path d='M4 8h8M8 4v8' strokeLinecap='round'/></svg>
             </div>
-            <h1 className='land-title'>AI Interviewer</h1>
+            <h1 className='land-title'>SESSION INTERFACE</h1>
           </div>
+          {
+    pastSessions.length > 0 &&
+        (<button className = 'hist-btn' onClick = {
+           function() {
+             setShowHistory(function(p) {
+               return !p;
+             });
+           }
+         }><svg viewBox = '0 0 16 16' fill = 'none' stroke =
+                'currentColor' strokeWidth = '1.5' strokeLinecap = 'round'>
+         <circle cx = '8' cy = '8' r = '6' /><path d = 'M8 5v3l2 2' />
+         </svg>
+              History
+              <span className="hist-count">{pastSessions.length}</span>
+         </button>
+          )}
         </div>
+
+         {showHistory && (
+          <div className='hist-panel a0'>
+            <div className='hist-panel-head'>
+              <span className='hist-panel-title'>Past Sessions</span>
+              <button className="hist-close" onClick={function() { setShowHistory(false); }}>x</button>
+            </div>
+            <div className="hist-list">
+              {pastSessions.map(function(s) {
+                var pct = Math.round((s.totalScore / s.maxScore) * 100);
+           var modeLabel =
+               s.mode === 'interview' ? (s.itype + ' / ' + s.diff) : s.mode;
+           return (
+               <div key = {s.id} className = 'hist-item'>
+               <div className = 'hist-item-left'>
+               <span className = 'hist-item-mode'>{modeLabel} <
+               /span>
+                      <span className="hist-item-level">{s.level}</span >
+               <span className = 'hist-item-date'>{formatDate(s.date)} <
+               /span>
+                    </div >
+               <div className = 'hist-item-right'>
+               <span className =
+                    {'hist-score ' +
+                     (pct >= 70     ? 'hi' :
+                          pct >= 50 ? 'md' :
+                                      'lo')}> {
+                 s.totalScore
+               } /{s.maxScore}
+                      </span >
+               <button className = 'hist-del' onClick =
+                {
+                  function() {
+                    deleteSession(s.id);
+                    setPastSessions(loadSessions());
+                  }
+                } title = 'Delete'>x</button>
+                    </div>
+               </div>
+                );
+              })}
+            </div>
+               </div>
+        )}
 
         <div className="land-mode-tabs a0">
           {[
-            { id: 'interview', label: 'Interview', icon: '&#128100;', desc: 'One-on-one personalised interview' },
+            { id: 'interview', label: 'Interview',        icon: '&#128100;', desc: 'One-on-one personalised interview' },
             { id: 'gd',        label: 'Group Discussion', icon: '&#128172;', desc: 'Multi-participant GD round' },
-            { id: 'stress',    label: 'Stress Interview', icon: '&#9889;', desc: 'Pressure test your composure' },
+            { id: 'stress',    label: 'Stress Interview', icon: '&#9889;',  desc: 'Pressure test your composure' },
           ].map(function(m) {
             var active = gdMode === m.id;
             return (
@@ -2144,52 +2228,56 @@ export default function App() {
                 onClick={function() { setGdMode(m.id); }}
               >
                 <span className="mode-tab-icon" dangerouslySetInnerHTML={{ __html: m.icon }}></span>
-                <span className='mode-tab-label'>{m.label}</span>
-                <span className="mode-tab-desc">{m.desc}</span>
-              </button>
+               <span className = 'mode-tab-label'>{m.label} <
+               /span>
+                <span className="mode-tab-desc">{m.desc}</span >
+               </button>
             );
           })}
         </div>
 
-        <div className='land-controls a1'>
-          <div className='ctrl-card'>
-            <label className='ctrl-upload' htmlFor='file-in'>
-              <div className={'ctrl-upload-icon' + (upState === 'ready' ? ' ok' : upState === 'fail' ? ' err' : '')}>
-                {
-    upState === 'ready' ?
-        (<svg viewBox = '0 0 16 16'><path d = 'M3 8l4 4 6-6' />
-         </svg>
+               <div className = 'land-controls a1'><div className = 'ctrl-card'>
+               <label className = 'ctrl-upload' htmlFor = 'file-in'>
+               <div className = {
+                    'ctrl-upload-icon' +
+                    (upState === 'ready'    ? ' ok' :
+                         upState === 'fail' ? ' err' :
+                                              '')}> {
+                 upState === 'ready' ?
+                     (<svg viewBox = '0 0 16 16'><path d = 'M3 8l4 4 6-6' />
+                      </svg>
                 ) : upState === 'fail' ? (
                   <svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8"/>
-         </svg>
+                      </svg>
                 ) : upState === 'uploading' ? (
-                  <span className="spin" style={{ fontSize: '13px', color: 'var(--ink3)' }}>o</span>) :
-        (<svg viewBox = '0 0 16 16'><path d = 'M8 11V5M5 7l3-3 3 3M4 13h8' />
-         </svg>
+                  <span className="spin" style={{ fontSize: '13px', color: 'var(--muted)' }}>o</span>) :
+                     (<svg viewBox = '0 0 16 16'>
+                      <path d = 'M8 11V5M5 7l3-3 3 3M4 13h8' />
+                      </svg>
                 )}
               </div>
-         <div className = 'ctrl-upload-text'>
-         <span className =
-              {'ctrl-upload-main' +
-               (upState === 'ready'    ? ' ok' :
-                    upState === 'fail' ? ' err' :
-                    upState === 'idle' ? ' dim' :
-                                         '')}>{
-             upState === 'uploading' ? 'Uploading...' :
-                 upState === 'ready' ? 'Resume uploaded' :
-                 upState === 'fail'  ? 'Upload failed' :
-                                       'Upload Resume'} <
-         /span>
+                      <div className = 'ctrl-upload-text'>
+                      <span className =
+                           {'ctrl-upload-main' +
+                            (upState === 'ready'    ? ' ok' :
+                                 upState === 'fail' ? ' err' :
+                                 upState === 'idle' ? ' dim' :
+                                                      '')}>{
+                          upState === 'uploading' ? 'Uploading...' :
+                              upState === 'ready' ? 'Resume uploaded' :
+                              upState === 'fail'  ? 'Upload failed' :
+                                                    'Upload Resume'} <
+                      /span>
                 <span className="ctrl-upload-sub">.docx format</span >
-         </div>
+                      </div>
               <span className="ctrl-upload-arrow">&#8599;</span>
-         </label>
+                      </label>
             <input id="file-in" type="file" accept=".docx" onChange={handleFile} style={{ display: 'none' }} />
-         </div>
+                      </div>
 
           <div className="ctrl-card a2">
             <div className="ctrl-head"><span className="label">Level</span>
-         </div>
+                      </div>
             <div className="ctrl-body">
               <div className="seg">
                 {LEVELS.map(function(l) {
@@ -2197,24 +2285,23 @@ export default function App() {
                     <button key={l.id} className={'seg-btn' + (level === l.id ? ' on' : '')} onClick={function() { setLevel(l.id); }}>
                       {l.label}
                     </button>);
-                })}
-              </div>
-            </div>
-          </div>
+               })
+         } < /div>
+            </div >
+         </div>
 
           {gdMode === 'interview' && (
             <div className="ctrl-card a3">
-              <div className="ctrl-head"><span className="label">Type</span></div>
+              <div className="ctrl-head"><span className="label">Type</span>
+         </div>
               <div className="ctrl-body">
                 <div className="seg">
                   {['Technical', 'HR'].map(function(t) {
                     return (
                       <button key={t} className={'seg-btn' + (itype === t ? ' on' : '')} onClick={function() { setItype(t); }}>
                         {t}
-                      </button>
-                    );
-          })
-          }
+                      </button>);
+                  })}
                 </div>
               </div>
             </div>
@@ -2231,34 +2318,29 @@ export default function App() {
                         {d}
                       </button>
                     );
-                })
-                }
+                  })}
                 </div>
-              </div><
-                    /div>
+              </div>
+            </div>
           )}
 
           {gdMode === 'gd' && (
             <div className="ctrl-card a3 gd-topic-ctrl">
-              <div className="ctrl-head"><span className="label">GD Topic</span>
-                    </div>
+              <div className="ctrl-head"><span className="label">GD Topic</span></div>
               <div className="ctrl-body gd-topic-body">
                 <div className="gd-topic-toggle">
                   <button className={'seg-btn' + (!gdCustom ? ' on' : '')} onClick={function() { setGdCustom(false); }}>Preset</button>
-                    <button className = {
-                         'seg-btn' + (gdCustom ? ' on' : '')} onClick = {
-                      function() {
-                        setGdCustom(true);
-                      }
-                    }>Custom</button>
-                </div> {
-                  !gdCustom ? (< select
-                  className = 'gd-topic-select'
-                  value = {gdTopic} onChange = {
-                    function(e) {
-                      setGdTopic(e.target.value);
-                    }
-                  } > {GD_TOPICS.map(function(t, i) {
+                  <button className={'seg-btn' + (gdCustom ? ' on' : '')} onClick={function() {
+  setGdCustom(true); }}>Custom</button>
+                </div>
+                {
+            !gdCustom ? (< select
+            className = 'gd-topic-select'
+            value = {gdTopic} onChange = {
+              function(e) {
+                setGdTopic(e.target.value);
+              }
+            } > {GD_TOPICS.map(function(t, i) {
                       return <option key={i} value={t}>{t}</option>;
                     })}
                   </select>

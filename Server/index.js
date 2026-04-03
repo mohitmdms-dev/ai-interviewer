@@ -981,4 +981,52 @@ Return ONLY valid JSON, no markdown:
   }
 });
 
+
+app.post('/think-start', async (req, res) => {
+  try {
+    const {sessionId, systemPrompt, openMsg} = req.body;
+    conversationHistories[sessionId] =
+        [{role: 'system', content: systemPrompt}];
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        ...conversationHistories[sessionId],
+        {role: 'user', content: openMsg},
+      ],
+      temperature: 0.7,
+      max_tokens: 120,
+    });
+    const aiMessage = response.choices[0].message.content;
+    conversationHistories[sessionId].push(
+        {role: 'user', content: openMsg},
+        {role: 'assistant', content: aiMessage});
+    res.json({message: aiMessage});
+  } catch (err) {
+    console.error('THINK START ERROR:', err);
+    res.status(500).json({error: 'AI Failed'});
+  }
+});
+
+app.post('/think-chat', async (req, res) => {
+  try {
+    const {message, sessionId} = req.body;
+    if (!conversationHistories[sessionId])
+      return res.status(400).json({error: 'Session not found'});
+    conversationHistories[sessionId].push({role: 'user', content: message});
+    const response = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      messages: conversationHistories[sessionId],
+      temperature: 0.75,
+      max_tokens: 120,
+    });
+    const aiMessage = response.choices[0].message.content;
+    conversationHistories[sessionId].push(
+        {role: 'assistant', content: aiMessage});
+    res.json({message: aiMessage});
+  } catch (err) {
+    console.error('THINK CHAT ERROR:', err);
+    res.status(500).json({error: 'AI Failed'});
+  }
+});
+
 app.listen(5000, () => console.log('Server running on port 5000'));
