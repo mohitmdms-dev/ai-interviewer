@@ -3,8 +3,9 @@ import './App.css';
 import axios from 'axios';
 import React, {useCallback, useEffect, useRef, useState} from 'react';
 
-const TOTAL_Q = 5, Q_TIME = 240, GD_TIME = 240, S_TIME = 240;
-const BASE = 'http://localhost:5000';
+const TOTAL_Q = 5;
+const TIMER = 240;
+const BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
 const STORE_KEY = 'practiceroom_sessions';
 
 const GD_TOPICS = [
@@ -19,23 +20,64 @@ const GD_TOPICS = [
   'India should prioritize deep tech over outsourcing services',
   'Startups are better career choices than established corporations for freshers',
 ];
+
 const GD_PERSONAS = [
   [
-    {name: 'Arjun', stance: 'strongly in favour of'},
-    {name: 'Priya', stance: 'strongly against'},
-    {name: 'Rohan', stance: 'neutral but analytical about'}
+    {
+      name: 'Arjun',
+      stance: 'strongly supports',
+      style: 'data-driven, cites stats and real examples, confident tone'
+    },
+    {
+      name: 'Priya',
+      stance: 'firmly opposes',
+      style:
+          'emotional and passionate, appeals to human impact, challenges assumptions'
+    },
+    {
+      name: 'Rohan',
+      stance: 'plays devil\'s advocate on',
+      style: 'sceptical, pokes holes in arguments, asks tough questions'
+    },
   ],
   [
-    {name: 'Meera', stance: 'passionately in favour of'},
-    {name: 'Karan', stance: 'sceptical of'},
-    {name: 'Ananya', stance: 'presenting a middle ground on'}
+    {
+      name: 'Meera',
+      stance: 'passionately supports',
+      style: 'visionary, talks about future implications, uses analogies'
+    },
+    {
+      name: 'Karan',
+      stance: 'critically questions',
+      style:
+          'logical and structured, breaks arguments into parts, highlights contradictions'
+    },
+    {
+      name: 'Ananya',
+      stance: 'seeks a middle ground on',
+      style: 'diplomatic, synthesises opposing views, steers toward consensus'
+    },
   ],
   [
-    {name: 'Vikram', stance: 'firmly against'},
-    {name: 'Divya', stance: 'enthusiastically supporting'},
-    {name: 'Rahul', stance: 'raising practical concerns about'}
+    {
+      name: 'Vikram',
+      stance: 'strongly opposes',
+      style:
+          'blunt and direct, uses provocative statements, challenges the group'
+    },
+    {
+      name: 'Divya',
+      stance: 'enthusiastically supports',
+      style: 'energetic, uses current events and news, builds momentum'
+    },
+    {
+      name: 'Rahul',
+      stance: 'raises practical concerns about',
+      style: 'pragmatic, focuses on feasibility and implementation challenges'
+    },
   ],
 ];
+
 const FILLERS = [
   'um',        'uh',           'er',      'ah',        'like',
   'basically', 'you know',     'sort of', 'kind of',   'right',
@@ -49,8 +91,10 @@ const pct = (s, m) => Math.round((s / m) * 100);
 const sClass = p => p >= 70 ? 'hi' : p >= 50 ? 'md' : 'lo';
 const fmtTime = t => Math.floor(t / 60) + ':' + String(t % 60).padStart(2, '0');
 const tColor = t => t > 120 ? 'var(--acc)' : t > 60 ? '#f0a030' : '#e05555';
+const msg = (role, content) => ({role, content, ts: new Date()});
+const getRef = r => r.current ? r.current.textContent : '';
 
-const detectFillers = text => {
+function detectFillers(text) {
   if (!text) return {count: 0, words: ''};
   const found = {};
   FILLERS.forEach(f => {
@@ -58,10 +102,11 @@ const detectFillers = text => {
         new RegExp('\\b' + f.replace(' ', '\\s+') + '\\b', 'gi'));
     if (m && m.length) found[f] = m.length;
   });
-  const count = Object.values(found).reduce((a, b) => a + b, 0);
-  const words = Object.entries(found).map(([k, v]) => k + ' x' + v).join(', ');
-  return {count, words};
-};
+  return {
+    count: Object.values(found).reduce((a, b) => a + b, 0),
+    words: Object.entries(found).map(([k, v]) => k + ' x' + v).join(', '),
+  };
+}
 
 const DB = {
   load: () => {
@@ -73,8 +118,8 @@ const DB = {
   },
   save: s => {
     try {
-      const a = [s, ...DB.load()].slice(0, 20);
-      localStorage.setItem(STORE_KEY, JSON.stringify(a));
+      localStorage.setItem(
+          STORE_KEY, JSON.stringify([s, ...DB.load()].slice(0, 20)));
     } catch {
     }
   },
@@ -110,39 +155,41 @@ function pickVoice() {
 function speakNatural(text, onDone) {
   const s = window.speechSynthesis;
   if (!s) {
-    if (onDone) onDone();
-    return () => {};
+    onDone?.();
+    return;
   }
   s.cancel();
-  const clean = text.replace(/[*_`#>~\[\]{}]/g, '')
+  const clean = text.replace(/[*_`#>~[\]{}]/g, '')
                     .replace(/https?:\/\/\S+/g, '')
                     .replace(/\s+/g, ' ')
                     .trim();
   if (!clean) {
-    if (onDone) onDone();
-    return () => {};
+    onDone?.();
+    return;
   }
   const chunks = (clean.match(/[^.!?;:]+[.!?;:]+|[^.!?;:]+$/g) || [clean])
                      .map(c => c.trim())
                      .filter(c => c.length > 1);
   const voice = pickVoice();
-  let i = 0, cancelled = false, kat = null;
+  let i = 0, done = false, kat = null;
+  const finish = () => {
+    if (!done) {
+      done = true;
+      clearTimeout(kat);
+      onDone?.();
+    }
+  };
   const keepAlive = () => {
-    if (!cancelled && s.speaking) {
+    if (!done && s.speaking) {
       s.pause();
       s.resume();
       kat = setTimeout(keepAlive, 10000);
     }
   };
-  const done = () => {
-    cancelled = true;
-    clearTimeout(kat);
-    if (onDone) onDone();
-  };
   const next = () => {
-    if (cancelled) return;
+    if (done) return;
     if (i >= chunks.length) {
-      done();
+      finish();
       return;
     }
     const u = new SpeechSynthesisUtterance(chunks[i++]);
@@ -157,7 +204,7 @@ function speakNatural(text, onDone) {
     u.onerror = e => {
       clearTimeout(kat);
       if (e.error === 'interrupted' || e.error === 'canceled') {
-        done();
+        finish();
         return;
       }
       setTimeout(next, 80);
@@ -166,12 +213,9 @@ function speakNatural(text, onDone) {
     kat = setTimeout(keepAlive, 10000);
   };
   next();
-  return () => {
-    cancelled = true;
-    clearTimeout(kat);
-    s.cancel();
-  };
 }
+
+const speakAsync = text => new Promise(resolve => speakNatural(text, resolve));
 
 function useContinuousVoice(onText) {
   const active = useRef(false), rec = useRef(null), committed = useRef('');
@@ -180,7 +224,7 @@ function useContinuousVoice(onText) {
   useEffect(() => {
     cb.current = onText;
   }, [onText]);
-  const cleanT = t =>
+  const clean = t =>
       t.replace(/\s+/g, ' ')
           .replace(/^[,.\s]+/, '')
           .replace(/\bi\b/g, 'I')
@@ -224,9 +268,8 @@ function useContinuousVoice(onText) {
             }
           }
           if (finals)
-            committed.current = cleanT(committed.current + ' ' + finals);
-          cb.current(
-              cleanT(committed.current + (interim ? ' ' + interim : '')));
+            committed.current = clean(committed.current + ' ' + finals);
+          cb.current(clean(committed.current + (interim ? ' ' + interim : '')));
         };
         r.onend = () => {
           if (active.current) retryT.current = setTimeout(boot, 100);
@@ -266,6 +309,18 @@ function useContinuousVoice(onText) {
   return {start, stop};
 }
 
+function useCountdown(active, timeLeft, setTimeLeft, onExpire) {
+  const timerRef = useRef(null);
+  useEffect(() => {
+    if (active && timeLeft > 0) {
+      timerRef.current = setTimeout(() => setTimeLeft(t => t - 1), 1000);
+    } else if (active && timeLeft === 0) {
+      onExpire();
+    }
+    return () => clearTimeout(timerRef.current);
+  }, [active, timeLeft]);
+}
+
 function VoiceInput({
   editRef,
   tx,
@@ -275,14 +330,11 @@ function VoiceInput({
   voice,
   onSubmit,
   disabled,
-  label,
-  speaking,
+  label = 'Submit',
+  speaking = false,
   onInterrupt
 }) {
-  const lbl = label || 'Submit';
-  const spk = speaking || false;
-  const hasAns =
-      (editRef.current ? editRef.current.textContent : tx).trim().length > 0;
+  const hasAns = (getRef(editRef) || tx).trim().length > 0;
   const startRec = () => {
     setTx('');
     if (editRef.current) editRef.current.textContent = '';
@@ -301,65 +353,55 @@ function VoiceInput({
   };
   return (
     <div className='iv-input'>
-      {spk && !listening && (
+      {speaking && !listening && (
         <div className='speak-bar interrupt-bar'>
-          <div className='speak-waves'>{[0, 1, 2, 3, 4].map(i => <span key={
+          <div className='speak-waves'>{[0,1,2,3,4].map(i => <span key={
     i} />)}</div>
-          <div className='speak-bar-left'>
-            <span className='speak-lbl'>Speaking</span>
-            <span className="speak-hint">Interrupt anytime</span>
-          </div>
+          <div className='speak-bar-left'><span className='speak-lbl'>Speaking</span><span className="speak-hint">Interrupt anytime</span></div>
           <div className="speak-bar-btns">
-            <button className="btn-interrupt" onClick={onInterrupt}>
-              <span className="rec-dot" />Answer Now
-            </button>
-            <button className="speak-stop" onClick={() => window.speechSynthesis && window.speechSynthesis.cancel()}>
-              Skip
-            </button>
+            <button className="btn-interrupt" onClick={onInterrupt}><span className="rec-dot" />Answer Now</button>
+            <button className="speak-stop" onClick={() => window.speechSynthesis?.cancel()}>Skip</button>
           </div>
         </div>
       )}
-      {(!spk || listening) && (
+      {(!speaking || listening) && (
         <div className={'voice-wrap' + (listening ? ' rec' : '')}>
-          <div
-    ref = {editRef} className = 'voice-field'
-    contentEditable = {!listening} suppressContentEditableWarning =
-        {true} onInput = {e => setTx(e.currentTarget.textContent)} onPaste =
-            {e => e.preventDefault()} onCopy = {e => e.preventDefault()} onCut =
-                {e => e.preventDefault()} onDrop =
-                    {e => e.preventDefault()} onContextMenu =
-                        {e => e.preventDefault()} spellCheck =
+          <div ref={editRef} className='voice-field' contentEditable={!listening} suppressContentEditableWarning
+    onInput = {e => setTx(e.currentTarget.textContent)} onPaste =
+        {e => e.preventDefault()} onCopy = {e => e.preventDefault()} onCut =
+            {e => e.preventDefault()} onDrop =
+                {e => e.preventDefault()} onContextMenu =
+                    {e => e.preventDefault()} spellCheck =
     {
       false
     } />
           <div className="voice-bar">
             {!listening
-              ? <button className={'btn-rec' + (disabled ? ' off' : '')} onClick={disabled ? undefined : startRec}>
-                  <span className="rec-dot" / >
+              ? <button className={'btn-rec' + (disabled ? ' off' : '')} onClick={disabled ? undefined : startRec}><span className="rec-dot" / >
         {hasAns ? 'Continue' : 'Record'} <
         /button>
-              : <button className="btn-rec on" onClick={stopRec}>
-                  <span className="rec-dot" / >
+              : <button className="btn-rec on" onClick={stopRec}><span className="rec-dot" / >
         Stop<
             /button>
             }
             {hasAns && !listening && <button className="btn-action" onClick={clear}>Clear</button>}
-            {hasAns && !listening && (
-              <button className={'btn-action primary' + (disabled ? ' off' : '')} onClick={disabled ? undefined : onSubmit}>
-                {lbl}
-              </button>
-            )}
-          </div>
+            {
+    hasAns &&!listening
+            &&<button className =
+                   {'btn-action primary' + (disabled ? ' off' : '')} onClick =
+                       {disabled ? undefined : onSubmit}>{label} <
+        /button>}
+          </div >
         </div>
       )}
       <p className="input-hint">
-        {spk && !listening ? 'Press Answer Now to interrupt'
+        {speaking && !listening ? 'Press Answer Now to interrupt'
           : listening ? 'Recording - press Stop when finished'
-          : hasAns ? 'Edit if needed, then ' + lbl
+          : hasAns ? 'Edit if needed, then ' + label
           : disabled ? 'Please wait...'
           : 'Press Record to start'}
       </p>
-    </div>
+        </div>
   );
 }
 
@@ -388,9 +430,7 @@ function ScoreCard({ data, metrics, onNext, nextLabel, title }) {
       {data.fillerCount > 0 && (
         <div className={'fb-filler' + (data.fillerCount >= 5 ? ' hi' : '')}>
           <span className='fb-filler-icon'>!</span>
-          <span className="fb-filler-text">
-            {data.fillerCount} filler{data.fillerCount !== 1 ? 's' : ''}: {data.fillerWords}
-          </span>
+          <span className="fb-filler-text">{data.fillerCount} filler{data.fillerCount !== 1 ? 's' : ''}: {data.fillerWords}</span>
         </div>
       )}
       <div className="fb-text">
@@ -398,11 +438,9 @@ function ScoreCard({ data, metrics, onNext, nextLabel, title }) {
         {data.strengths && <p className='fb-good'>{data.strengths}</p>}
         {data.improvement && <p className="fb-tip">{data.improvement}</p>}
       </div>
-      {data.resources && data.resources.length > 0 && (
+      {data.resources?.length > 0 && (
         <div className="fb-links">
-          {data.resources.map((r, i) => (
-            <a key={i} href={r.url} target="_blank" rel="noreferrer">{r.title}</a>
-          ))}
+          {data.resources.map((r, i) => <a key={i} href={r.url} target="_blank" rel="noreferrer">{r.title}</a>)}
         </div>
       )}
       {onNext && <button className="fb-next" onClick={onNext}>{nextLabel}</button>}
@@ -421,361 +459,422 @@ function MsgList({ list, label, typing, endRef }) {
             <div className="msg-av">{m.role === 'you' ? 'You' : label}</div>
             <div className='msg-body'>
               <p className='msg-text'>{m.content}</p>
-              <p className="msg-ts">{m.ts.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</p>
+              <p className="msg-ts">{m.ts.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</p>
             </div>
           </div>
         )
       )
 }
-      {typing && (
-        <div className='typing-row'>
-          <div className='typing-av'>{label}</div>
-          <div className="typing-bubble"><span /><span /><span /></div>
-        </div>
-      )}
+      {typing && <div className='typing-row'><div className='typing-av'>{label}</div><div className="typing-bubble"><span /><span /><span /></div></div>}
       <div ref={endRef} />
     </div>
   );
       }
 
-      function HistoryScreen({onClose}) {
-        const [list, setList] = useState(() => DB.load());
-        const [view, setView] = useState(null);
-
-        if (view) {
-          const p = pct(view.totalScore, view.maxScore);
-    return (
-      <div className='results'><div className='res-inner'>
-        <div className='res-header a0' style={{
-      display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
-          <div>
-            <p className='res-eyebrow'>
-              {view.mode === 'interview' ? view.itype + ' / ' + view.diff : view.mode}
-              {' '}&#8226;{
-      ' '}{DB.fmt(view.date)}
-            </p>
-            <h1 className="res-title">Session Review</h1>
-          </div>
-          <button className="hist-close" onClick={() => setView(null)} style={{ marginTop: '8px' }}>&#10005;</button>
-        </div>
-        <div className="res-score a1">
-          <span className="res-big">{view.totalScore}</span>
-          <span className='res-denom'>/{view.maxScore}</span>
-          <span className={'res-verdict ' + sClass(p)}>
-            {p >= 85 ? 'Outstanding.' : p >= 70 ? 'Strong candidate.' : p >= 50 ? 'Room to develop.' : 'Significant gaps.'}
-          </span>
-        </div>
-        <div className='res-qs a2'>
-          {view.questions && view.questions.map((q, i) => (
-            <div key={i} className='res-q'>
-              <div className='res-q-head'>
-                <div className='res-q-left'>
-                  <div className='res-q-n'>{i + 1}</div>
-                  <span className="res-q-area">{q.area}</span>
-                </div>
-                <div className="res-q-scores">
-                  <span>K{q.knowledgeScore}</span>
-                  <span>C{q.confidenceScore}</span>
-                  <span className="res-q-total">{q.totalScore}/10</span>
-                </div>
-              </div>
-              {q.feedback && <p className="res-q-fb">{q.feedback}</p>}
-              {
-      q.strengths&&<p className = 'fb-good' style = {
-        {
-          fontSize: '13px', margin: '4px 0'
-        }
-      }>{q.strengths} <
-          /p>}
-              {q.improvement && <p className="res-q-tip">{q.improvement}</p >}
-              {q.fillerCount > 0 && (
-                <p style={{
-      fontSize: '12px', color: 'var(--muted)', margin: '4px 0' }}>
-                  Fillers: {q.fillerCount} ({q.fillerWords})
-                </p>
-              )}
-            </div>
-          ))}
-        </div>
-        <div className="res-actions a3">
-          <button className="res-ghost" onClick={() => setView(null)}>Back to History</button>
-        </div>
-      </div></div>
-    );
-  }
-
-  return (
-    <div className="results"><div className="res-inner">
-      <div className="res-header a0" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-        <h1 className="res-title">History</h1>
-        <button className='res-ghost' onClick={onClose}>Back to Home</button>
-      </div>
-      {list.length === 0
-        ? <p style={{
-      color: 'var(--muted)', textAlign: 'center', marginTop: '40px' }}>
-            No sessions yet. Complete an interview to see history.
-          </p>
-        : (
-          <div className="res-qs a1">
-            {list.map(s => {
-              const p = pct(s.totalScore, s.maxScore);
-              return (
-                <div
-                  key={s.id}
-                  className="hist-item"
-                  onClick={() => setView(s)}
-                  style={{
-                    cursor: 'pointer', padding: '14px 16px', borderRadius: '10px',
-                    background: 'var(--surface)', border: '1px solid var(--border)',
-                    marginBottom: '10px', display: 'flex', alignItems: 'center', gap: '12px',
-                  }}
-                >
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontWeight: 600, fontSize: '14px', marginBottom: '4px' }}>
-                      {s.mode === 'interview' ? s.itype + ' / ' + s.diff : s.mode}
-                    </div>
-                    <div style={{ fontSize: '12px', color: 'var(--muted)' }}>{DB.fmt(s.date)}</div>
-                  </div>
-                  <span className={'hist-score ' + sClass(p)} style={{ fontSize: '16px', fontWeight: 700 }}>
-                    {s.totalScore}/{s.maxScore}
-                  </span>
-                  <button
-                    className="hist-del"
-                    onClick={e => { e.stopPropagation(); DB.del(s.id); setList(DB.load()); }}
-                  >
-                    &#10005;
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        )
-      }
-    </div></div>
-  );
-        }
-
-        function ResourceGrid({resources}) {
-          if (!resources || !resources.length) return null;
+      function ResourceGrid({resources}) {
+        if (!resources?.length) return null;
   return (
     <div className='res-prep-grid'>
       {resources.map((r, i) => {
-      let domain = '';
-      try {
-        domain = new URL(r.url).hostname.replace('www.', '');
-      } catch {
-      }
-      const tag = domain.includes('youtube')                      ? 'Video' :
-          domain.includes('github')                               ? 'Code' :
-          domain.includes('medium')                               ? 'Article' :
-          domain.includes('docs.')                                ? 'Docs' :
-          domain.includes('coursera') || domain.includes('udemy') ? 'Course' :
-                                                                    'Read';
-      const tagColor = tag === 'Video' ? '#e05555' :
-          tag === 'Code'               ? '#2ecc71' :
-          tag === 'Course'             ? '#6c63ff' :
-          tag === 'Docs'               ? '#f0a030' :
-                                         'var(--acc)';
-      return (
-          <a key = {i} href = {r.url} target = '_blank' rel =
-               'noreferrer' className = 'res-prep-card'>
-          <div className = 'res-prep-card-top'>
-          <span className = 'res-prep-tag' style = {
-            {
-              background: tagColor + '22', color: tagColor,
-                  borderColor: tagColor + '44'
-            }
-          }>{tag} <
-          /span>
+    let domain = '';
+    try {
+      domain = new URL(r.url).hostname.replace('www.', '');
+    } catch {
+    }
+    const tag = domain.includes('youtube')                      ? 'Video' :
+        domain.includes('github')                               ? 'Code' :
+        domain.includes('medium')                               ? 'Article' :
+        domain.includes('docs.')                                ? 'Docs' :
+        domain.includes('coursera') || domain.includes('udemy') ? 'Course' :
+                                                                  'Read';
+    const color = tag === 'Video' ? '#e05555' :
+        tag === 'Code'            ? '#2ecc71' :
+        tag === 'Course'          ? '#6c63ff' :
+        tag === 'Docs'            ? '#f0a030' :
+                                    'var(--acc)';
+    return (
+        <a key = {i} href = {r.url} target = '_blank' rel =
+             'noreferrer' className = 'res-prep-card'>
+        <div className = 'res-prep-card-top'>
+        <span className = 'res-prep-tag' style = {
+          {
+            background: color + '22', color, borderColor: color + '44'
+          }
+        }>{tag} <
+        /span>
               <span className="res-prep-domain">{domain}</span >
-          </div>
+        </div>
             <p className="res-prep-card-title">{r.title}</p>
-          <p className = 'res-prep-card-reason'>{r.reason} <
-          /p>
-            <div className="res-prep-card-foot">
-              <span className="res-prep-card-cta">Open resource &#8599;</span >
-          </div>
+        <p className = 'res-prep-card-reason'>{r.reason} <
+        /p>
+            <div className="res-prep-card-foot"><span className="res-prep-card-cta">Open resource &#8599;</span >
+        </div>
           </a>);
       })}
     </div>
   );
 }
 
-export default function App() {
-  const [screen,    setScreen]    = useState('landing');
-  const [itype,     setItype]     = useState('Technical');
-  const [diff,      setDiff]      = useState('Medium');
-  const [upState,   setUpState]   = useState('idle');
-  const [plans,     setPlans]     = useState([]);
-  const [analysing, setAnalysing] = useState(false);
-  const [step,      setStep]      = useState(0);
-  const [msgs,      setMsgs]      = useState([]);
-  const [tx,        setTx]        = useState('');
-  const [started,   setStarted]   = useState(false);
-  const [feedback,  setFeedback]  = useState(null);
-  const [aiTyping,  setAiTyping]  = useState(false);
-  const [history,   setHistory]   = useState([]);
-  const [tLeft,     setTLeft]     = useState(Q_TIME);
-  const [timerOn,   setTimerOn]   = useState(false);
-  const [listening, setListening] = useState(false);
-  const [audioOn,   setAudioOn]   = useState(true);
-  const [speaking,  setSpeaking]  = useState(false);
-  const [sid]                     = useState(uid);
-
-  const [gdMode,    setGdMode]    = useState('interview');
-  const [gdTopic,   setGdTopic]   = useState(GD_TOPICS[0]);
-  const [gdCustom,  setGdCustom]  = useState(false);
-  const [gdCustomT, setGdCustomT] = useState('');
-  const [gdMsgs,    setGdMsgs]    = useState([]);
-  const [gdResult,  setGdResult]  = useState(null);
-  const [gdTyping,  setGdTyping]  = useState(false);
-  const [gdTLeft,   setGdTLeft]   = useState(GD_TIME);
-  const [gdTimerOn, setGdTimerOn] = useState(false);
-  const [gdDone,    setGdDone]    = useState(false);
-  const [gdSpk,     setGdSpk]     = useState(false);
-
-  const [sMsgs,    setSMsgs]    = useState([]);
-  const [sRes,     setSRes]     = useState(null);
-  const [sTyping,  setSTyping]  = useState(false);
-  const [sTLeft,   setSTLeft]   = useState(S_TIME);
-  const [sTimerOn, setSTimerOn] = useState(false);
-  const [sDone,    setSDone]    = useState(false);
-  const [sSpk,     setSSpk]    = useState(false);
-
-  const [suggestions,    setSuggestions]    = useState([]);
-  const [suggestLoading, setSuggestLoading] = useState(false);
-  const timerR   = useRef(null),  gdTimerR  = useRef(null),  sTimerR  = useRef(null);
-  const endR     = useRef(null),  gdEndR    = useRef(null),  sEndR    = useRef(null);
-  const editR    = useRef(null),  gdEditR   = useRef(null),  sEditR   = useRef(null);
-  const plansR   = useRef([]),    stepR     = useRef(0);
-  const cvR      = useRef([]),    gdCvR     = useRef([]),    sCvR     = useRef([]);
-  const gdSidR   = useRef(''),    sSidR     = useRef(''),    gdPersR  = useRef([]);
-  const fillerR  = useRef({ count: 0, words: '' });
-  const historyR = useRef([]);
-  const savedR   = useRef(false);
-
-  useEffect(() => { audioR.current = audioOn; }, [audioOn]);
-  useEffect(() => { plansR.current = plans; }, [plans]);
-  useEffect(() => { stepR.current = step; }, [step]);
-  useEffect(() => { historyR.current = history; }, [history]);
-  useEffect(() => { if (endR.current) endR.current.scrollIntoView({ behavior: 'smooth' }); }, [msgs, aiTyping]);
-  useEffect(() => { if (gdEndR.current) gdEndR.current.scrollIntoView({ behavior: 'smooth' }); }, [gdMsgs, gdTyping]);
-  useEffect(() => { if (sEndR.current) sEndR.current.scrollIntoView({ behavior: 'smooth' }); }, [sMsgs, sTyping]);
-  useEffect(() => {
-    const s = window.speechSynthesis;
-    if (!s) return;
-    const load = () => { if (!s.getVoices().length) setTimeout(load, 100); };
-    load();
-    s.addEventListener('voiceschanged', () => s.getVoices());
-  }, []);
-
-  const addMsg   = useCallback((r, c) => setMsgs(p => [...p, { role: r, content: c, ts: new Date() }]), []);
-  const addGdMsg = useCallback((r, c) => setGdMsgs(p => [...p, { role: r, content: c, ts: new Date() }]), []);
-  const addSMsg  = useCallback((r, c) => setSMsgs(p => [...p, { role: r, content: c, ts: new Date() }]), []);
-  const stopAll  = useCallback(() => {
-    if (window.speechSynthesis) window.speechSynthesis.cancel();
-    setSpeaking(false); setGdSpk(false); setSSpk(false);
-  }, []);
-  const speak = useCallback((text, onDone) => {
-    if (!audioR.current) { if (onDone) onDone(); return; }
-    setSpeaking(true);
-    speakNatural(text, () => { setSpeaking(false); if (onDone) onDone(); });
-  }, []);
-
-  const saveSessionNow = useCallback((updatedHistory, itypeVal, diffVal) => {
-    const tot = updatedHistory.reduce((a, b) => a + (b.totalScore || 0), 0);
-    DB.save({
-      id: uid(),
-      date: new Date().toISOString(),
-      mode: 'interview',
-      itype: itypeVal,
-      diff: diffVal,
-      totalScore: tot,
-      maxScore: TOTAL_Q * 10,
-      questions: updatedHistory,
-    });
-  }, []);
-
-  const onTx   = useCallback(t => { setTx(t); if (editR.current && editR.current.textContent !== t) editR.current.textContent = t; }, []);
-  const onGdTx = useCallback(t => { setTx(t); if (gdEditR.current && gdEditR.current.textContent !== t) gdEditR.current.textContent = t; }, []);
-  const onSTx  = useCallback(t => { setTx(t); if (sEditR.current && sEditR.current.textContent !== t) sEditR.current.textContent = t; }, []);
-
-  const voice   = useContinuousVoice(onTx);
-  const gdVoice = useContinuousVoice(onGdTx);
-  const sVoice  = useContinuousVoice(onSTx);
-
-  const doGrade = useCallback(async () => {
-    setTimerOn(false);
-    clearTimeout(timerR.current);
-    stopAll();
-    pendingR.current = false;
-    addMsg('sys', 'Evaluating your answer...');
-    const s = stepR.current;
-    const pl = plansR.current[s - 1];
-    const fd = fillerR.current;
-    fillerR.current = { count: 0, words: '' };
-    try {
-      const gradeUrl = BASE + '/grade';
-      const res = await axios.post(gradeUrl, {
-        conversation: cvR.current.slice(),
-        questionNumber: s,
-        type: itype,
-        difficulty: diff,
-        level: diff,
-        area: pl ? pl.area : '',
-        angle: pl ? pl.angle : '',
-        fillerCount: fd.count,
-        fillerWords: fd.words,
-      });
-      setFeedback(res.data.data);
-      const gradedQ = {
-        questionNumber: s,
-        area: pl ? pl.area : '',
-        angle: pl ? pl.angle : '',
-        ...res.data.data,
-      };
-      const updatedHistory = [...historyR.current, gradedQ];
-      setHistory(updatedHistory);
-      if (s === TOTAL_Q && !savedR.current) {
-      savedR.current = true;
-      saveSessionNow(updatedHistory, itype, diff);
+function ScorePills({ items, color }) {
+  return (
+    <div className="res-q-head" style={{ flexWrap:'wrap', gap:'8px' }}>
+      {items.map(([l, v]) => (
+        <div key={l} style={{ display:'flex', flexDirection:'column', alignItems:'center', gap:'2px', padding:'8px 12px', background:'var(--bg3)', borderRadius:'8px', border:'1px solid var(--border)' }}>
+          <span style={{ fontSize:'18px', fontWeight:700, color }}>{v}</span>
+          <span style={{
+    fontSize: '10px', color: 'var(--ink3)' }}>{l}</span>
+        </div>
+      ))
       }
+      < /div>
+  );
+}
+
+function HistoryScreen({ onClose }) {
+  const [list, setList] = useState(() => DB.load());
+  const [view, setView] = useState(null);
+  const modeLabel = s => s.mode === 'interview' ? s.itype + ' /' + s.diff : s.mode === ' gd
+      ' ? ' Group Discussion / ' + s.diff : ' Stress Interview / ' + s.diff;
+
+          if (view) {
+        const p = pct(view.totalScore, view.maxScore);
+    return (
+      <div className='results'><div className='res-inner'>
+        <div className='res-header a0' style={{
+    display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+          <div>
+            <p className='res-eyebrow'>{modeLabel(view)} &bull; {DB.fmt(view.date)}</p>
+            <h1 className="res-title">Session Review</h1>
+          </div>
+          <button className="hist-close" onClick={() => setView(null)} style={{ marginTop:'8px' }}>&#10005;</button>
+        </div>
+        <div className="res-score a1">
+          <span className="res-big">{view.totalScore}</span>
+          <span className='res-denom'>/{view.maxScore}</span>
+          <span className={'res-verdict ' + sClass(p)}>{p >= 85 ? 'Outstanding.' : p >= 70 ? 'Strong.' : p >= 50 ? 'Room to grow.' : 'Needs work.'}</span>
+        </div>
+        <div className='res-qs a2'>
+          {view.mode === 'interview' && view.questions?.map((q, i) => (
+            <div key={i} className='res-q'>
+              <div className='res-q-head'>
+                <div className='res-q-left'><div className='res-q-n'>{i + 1}</div><span className="res-q-area">{q.area}</span></div>
+                <div className="res-q-scores"><span>K{q.knowledgeScore}</span><span>C{q.confidenceScore}</span><span className="res-q-total">{q.totalScore}/10</span></div>
+              </div>
+              {q.feedback && <p className="res-q-fb">{q.feedback}</p>}
+              {
+    q.strengths &&<p className = 'fb-good' style = {
+      {
+        fontSize: '13px', margin: '4px 0'
+      }
+    }>{q.strengths} <
+        /p>}
+              {q.improvement && <p className="res-q-tip">{q.improvement}</p >}
+              {q.fillerCount > 0 && <p style={{
+      fontSize: '12px', color: 'var(--muted)', margin: '4px 0' }}>Fillers: {q.fillerCount} ({q.fillerWords})</p>}
+            </div>
+          ))}
+          {view.mode === 'gd' && view.result && (
+            <div className='res-q'>
+              {
+      view.topic &&<p style = {
+        {
+          fontSize: '13px', color: 'var(--ink2)', marginBottom: '12px'
         }
-        catch (err) {
+      }>Topic: {view.topic} <
+          /p>}
+              <ScorePills color="var(--acc)" items={[['Initiation', view.result.initiationScore], ['Content', view.result.contentScore], ['Leadership', view.result.leadershipScore], ['Communication', view.result.communicationScore]]} / >
+          {
+            view.result.feedback &&<p className = 'res-q-fb'>{
+                view.result.feedback} <
+            /p>}
+              {view.result.strengths && <p className="fb-good" style={{ fontSize:'13px', margin:'4px 0' }}>{view.result.strengths}</p >
+          } {view.result.improvement && <p className='res-q-tip'>{view.result.improvement}</p>}
+            </div>
+          )
+      }
+      {view.mode === 'stress' && view.result && (
+            <div className='res-q'>
+              <ScorePills color='#e05555' items={
+          [['Composure', view.result.composureScore],
+           ['Assertiveness', view.result.assertivenessScore],
+           ['Recovery', view.result.recoveryScore],
+           ['Authenticity', view.result.authenticityScore]]} />
+              {view.result.feedback && <p className="res-q-fb">{view.result.feedback}</p>
+      }
+              {view.result.strengths && <p className='fb-good' style={{
+        fontSize: '13px', margin: '4px 0' }}>{view.result.strengths}</p>}
+              {view.result.improvement && <p className="res-q-tip">{view.result.improvement}</p>}
+            </div>
+          )}
+        </div>
+        <div className='res-actions a3'><button className='res-ghost' onClick={() => setView(null)}>Back to History</button></div>
+      </div></div>
+    );
+  }
+
+  return (
+    <div className='results'><div className='res-inner'>
+      <div className='res-header a0' style={{
+      display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <h1 className='res-title'>History</h1>
+        <button className="res-ghost" onClick={onClose}>Back to Home</button>
+      </div>
+      {list.length === 0
+        ? <p style={{ color:'var(--muted)', textAlign:'center', marginTop:'40px' }}>No sessions yet. Complete any mode to see history.</p>
+        : (
+          <div className='res-qs a1'>
+            {
+      list.map(s => {
+        const p = pct(s.totalScore, s.maxScore);
+        return (
+            <div key = {s.id} className =
+                 'hist-item' onClick = {() => setView(s)} style = {
+                   {
+                     cursor: 'pointer', padding: '14px 16px',
+                         borderRadius: '10px', background: 'var(--surface)',
+                         border: '1px solid var(--border)',
+                         marginBottom: '10px', display: 'flex',
+                         alignItems: 'center', gap: '12px'
+                   }
+                 }><div style = {
+              {
+                flex: 1
+              }
+            }><div style = {
+              {
+                fontWeight: 600, fontSize: '14px', marginBottom: '4px'
+              }
+            }>{modeLabel(s)} <
+            /div>
+                    <div style={{ fontSize:'12px', color:'var(--muted)' }}>{DB.fmt(s.date)}</div >
+            </div>
+                  <span className={'hist-score ' + sClass(p)} style={{ fontSize:'16px', fontWeight:700 }}>{s.totalScore}/{
+                 s.maxScore} <
+             /span>
+                  <button className="hist-del" onClick={e => { e.stopPropagation(); DB.del(s.id); setList(DB.load()); }}>&#10005;</button>
+            </div>
+              );
+            })}
+          </div>)
+      } < /div></div >);
+}
+
+export default function App() {
+      const [screen, setScreen] = useState('landing');
+      const [itype, setItype] = useState('Technical');
+      const [diff, setDiff] = useState('Medium');
+      const [upState, setUpState] = useState('idle');
+      const [plans, setPlans] = useState([]);
+      const [analysing, setAnalysing] = useState(false);
+      const [step, setStep] = useState(0);
+      const [msgs, setMsgs] = useState([]);
+      const [tx, setTx] = useState('');
+      const [started, setStarted] = useState(false);
+      const [feedback, setFeedback] = useState(null);
+      const [aiTyping, setAiTyping] = useState(false);
+      const [history, setHistory] = useState([]);
+      const [tLeft, setTLeft] = useState(TIMER);
+      const [timerOn, setTimerOn] = useState(false);
+      const [listening, setListening] = useState(false);
+      const [audioOn, setAudioOn] = useState(true);
+      const [speaking, setSpeaking] = useState(false);
+      const [sid] = useState(uid);
+
+      const [gdMode, setGdMode] = useState('interview');
+      const [gdTopic, setGdTopic] = useState(GD_TOPICS[0]);
+      const [gdCustom, setGdCustom] = useState(false);
+      const [gdCustomT, setGdCustomT] = useState('');
+      const [gdMsgs, setGdMsgs] = useState([]);
+      const [gdResult, setGdResult] = useState(null);
+      const [gdTyping, setGdTyping] = useState(false);
+      const [gdTLeft, setGdTLeft] = useState(TIMER);
+      const [gdTimerOn, setGdTimerOn] = useState(false);
+      const [gdDone, setGdDone] = useState(false);
+      const [gdSpk, setGdSpk] = useState(false);
+      const [gdSpeaker, setGdSpeaker] = useState('');
+
+      const [sMsgs, setSMsgs] = useState([]);
+      const [sRes, setSRes] = useState(null);
+      const [sTyping, setSTyping] = useState(false);
+      const [sTLeft, setSTLeft] = useState(TIMER);
+      const [sTimerOn, setSTimerOn] = useState(false);
+      const [sDone, setSDone] = useState(false);
+      const [sSpk, setSSpk] = useState(false);
+
+      const [suggestions, setSuggestions] = useState([]);
+      const [suggestLoading, setSuggestLoading] = useState(false);
+
+      const audioR = useRef(true);
+      const pendingR = useRef(false);
+      const savedR = useRef(false);
+      const endR = useRef(null), gdEndR = useRef(null), sEndR = useRef(null);
+      const editR = useRef(null), gdEditR = useRef(null), sEditR = useRef(null);
+      const plansR = useRef([]), stepR = useRef(0);
+      const cvR = useRef([]), gdCvR = useRef([]), sCvR = useRef([]);
+      const gdSidR = useRef(''), sSidR = useRef(''), gdPersR = useRef([]);
+      const fillerR = useRef({count: 0, words: ''});
+      const historyR = useRef([]);
+
+      useEffect(() => {
+        audioR.current = audioOn;
+      }, [audioOn]);
+      useEffect(() => {
+        plansR.current = plans;
+      }, [plans]);
+      useEffect(() => {
+        stepR.current = step;
+      }, [step]);
+      useEffect(() => {
+        historyR.current = history;
+      }, [history]);
+
+      useEffect(() => {
+        endR.current?.scrollIntoView({behavior: 'smooth'});
+      }, [msgs, aiTyping]);
+      useEffect(() => {
+        gdEndR.current?.scrollIntoView({behavior: 'smooth'});
+      }, [gdMsgs, gdTyping]);
+      useEffect(() => {
+        sEndR.current?.scrollIntoView({behavior: 'smooth'});
+      }, [sMsgs, sTyping]);
+
+      useEffect(() => {
+        const s = window.speechSynthesis;
+        if (!s) return;
+        const load = () => {
+          if (!s.getVoices().length) setTimeout(load, 100);
+        };
+        load();
+        s.addEventListener('voiceschanged', () => s.getVoices());
+      }, []);
+
+      useCountdown(timerOn, tLeft, setTLeft, useCallback(() => {
+                     setTimerOn(false);
+                     addMsg('sys', 'Time up.');
+                     doGrade();
+                   }, []));
+      useCountdown(gdTimerOn, gdTLeft, setGdTLeft, useCallback(() => {
+                     setGdTimerOn(false);
+                     doGdGrade();
+                   }, []));
+      useCountdown(sTimerOn, sTLeft, setSTLeft, useCallback(() => {
+                     setSTimerOn(false);
+                     doStressGrade();
+                   }, []));
+
+      const addMsg = useCallback((r, c) => setMsgs(p => [...p, msg(r, c)]), []);
+      const addGdMsg =
+          useCallback((r, c) => setGdMsgs(p => [...p, msg(r, c)]), []);
+      const addSMsg =
+          useCallback((r, c) => setSMsgs(p => [...p, msg(r, c)]), []);
+
+      const stopAll = useCallback(() => {
+        window.speechSynthesis?.cancel();
+        setSpeaking(false);
+        setGdSpk(false);
+        setSSpk(false);
+      }, []);
+
+      const speak = useCallback((text, onDone) => {
+        if (!audioR.current) {
+          onDone?.();
+          return;
+        }
+        setSpeaking(true);
+        speakNatural(text, () => {
+          setSpeaking(false);
+          onDone?.();
+        });
+      }, []);
+
+      const saveInterview = useCallback((questions, it, df) => {
+        DB.save({
+          id: uid(),
+          date: new Date().toISOString(),
+          mode: 'interview',
+          itype: it,
+          diff: df,
+          totalScore: questions.reduce((a, b) => a + (b.totalScore || 0), 0),
+          maxScore: TOTAL_Q * 10,
+          questions
+        });
+      }, []);
+
+      const onTx = useCallback(t => {
+        setTx(t);
+        if (editR.current && editR.current.textContent !== t)
+          editR.current.textContent = t;
+      }, []);
+      const onGdTx = useCallback(t => {
+        setTx(t);
+        if (gdEditR.current && gdEditR.current.textContent !== t)
+          gdEditR.current.textContent = t;
+      }, []);
+      const onSTx = useCallback(t => {
+        setTx(t);
+        if (sEditR.current && sEditR.current.textContent !== t)
+          sEditR.current.textContent = t;
+      }, []);
+
+      const voice = useContinuousVoice(onTx);
+      const gdVoice = useContinuousVoice(onGdTx);
+      const sVoice = useContinuousVoice(onSTx);
+
+      useEffect(() => {
+        if (screen !== 'results') return;
+        if (history.flatMap(h => h.resources || []).length > 0) return;
+        const areas =
+            history.map(h => h.area).filter(a => a && a !== 'Skipped');
+        if (!areas.length) return;
+        setSuggestLoading(true);
+        setSuggestions([]);
+        axios
+            .post(
+                BASE + '/suggest-resources',
+                {areas, type: itype, difficulty: diff})
+            .then(r => setSuggestions(r.data.resources || []))
+            .catch(() => {})
+            .finally(() => setSuggestLoading(false));
+      }, [screen]);
+
+      const doGrade = useCallback(async () => {
+        setTimerOn(false);
+        stopAll();
+        pendingR.current = false;
+        addMsg('sys', 'Evaluating your answer...');
+        const s = stepR.current;
+        const pl = plansR.current[s - 1];
+        const fd = {...fillerR.current};
+        fillerR.current = {count: 0, words: ''};
+        try {
+          const res = await axios.post(BASE + '/grade', {
+            conversation: cvR.current.slice(),
+            questionNumber: s,
+            type: itype,
+            difficulty: diff,
+            area: pl?.area || '',
+            angle: pl?.angle || '',
+            fillerCount: fd.count,
+            fillerWords: fd.words,
+          });
+          setFeedback(res.data.data);
+          const updated = [
+            ...historyR.current, {
+              questionNumber: s,
+              area: pl?.area || '',
+              angle: pl?.angle || '',
+              ...res.data.data
+            }
+          ];
+          setHistory(updated);
+          if (s === TOTAL_Q && !savedR.current) {
+            savedR.current = true;
+            saveInterview(updated, itype, diff);
+          }
+        } catch {
           addMsg('sys', 'Error grading.');
         }
-      }, [itype, diff, addMsg, stopAll, saveSessionNow]);
-
-      useEffect(() => {
-        if (timerOn && tLeft > 0) {
-          timerR.current = setTimeout(() => setTLeft(t => t - 1), 1000);
-        } else if (tLeft === 0 && timerOn) {
-          setTimerOn(false);
-          addMsg('sys', 'Time up.');
-          doGrade();
-        }
-        return () => clearTimeout(timerR.current);
-      }, [timerOn, tLeft, doGrade, addMsg]);
-
-      useEffect(() => {
-        if (gdTimerOn && gdTLeft > 0) {
-          gdTimerR.current = setTimeout(() => setGdTLeft(t => t - 1), 1000);
-        } else if (gdTLeft === 0 && gdTimerOn) {
-          setGdTimerOn(false);
-          doGdGrade();
-        }
-        return () => clearTimeout(gdTimerR.current);
-      }, [gdTimerOn, gdTLeft]);
-
-      useEffect(() => {
-        if (sTimerOn && sTLeft > 0) {
-          sTimerR.current = setTimeout(() => setSTLeft(t => t - 1), 1000);
-        } else if (sTLeft === 0 && sTimerOn) {
-          setSTimerOn(false);
-          doStressGrade();
-        }
-        return () => clearTimeout(sTimerR.current);
-      }, [sTimerOn, sTLeft]);
+      }, [itype, diff, addMsg, stopAll, saveInterview]);
 
       const loadQ = useCallback(async (s, ps) => {
         const pl = ps[s - 1];
@@ -786,7 +885,7 @@ export default function App() {
         setStarted(false);
         cvR.current = [];
         setTimerOn(false);
-        setTLeft(Q_TIME);
+        setTLeft(TIMER);
         setTx('');
         setListening(false);
         if (editR.current) editR.current.textContent = '';
@@ -796,10 +895,9 @@ export default function App() {
             questionNumber: s,
             type: itype,
             difficulty: diff,
-            level: diff,
             area: pl.area,
             angle: pl.angle,
-            sessionId: sid + '-q' + s,
+            sessionId: sid + '-q' + s
           });
           setAiTyping(false);
           addMsg('ai', res.data.message);
@@ -807,14 +905,14 @@ export default function App() {
           setStarted(true);
           setTimerOn(true);
           speak(res.data.message);
-        } catch (err) {
+        } catch {
           setAiTyping(false);
           addMsg('sys', 'Connection error.');
         }
       }, [itype, diff, sid, addMsg, speak, stopAll]);
 
       const submitAnswer = useCallback(async () => {
-        const raw = (editR.current ? editR.current.textContent : tx).trim();
+        const raw = (getRef(editR) || tx).trim();
         if (!raw || aiTyping) return;
         voice.stop();
         stopAll();
@@ -822,7 +920,7 @@ export default function App() {
         const fd = detectFillers(raw);
         fillerR.current = {
           count: fillerR.current.count + fd.count,
-          words: [fillerR.current.words, fd.words].filter(Boolean).join(', '),
+          words: [fillerR.current.words, fd.words].filter(Boolean).join(', ')
         };
         setTx('');
         if (editR.current) editR.current.textContent = '';
@@ -830,10 +928,9 @@ export default function App() {
         cvR.current = [...cvR.current, {role: 'user', content: raw}];
         setAiTyping(true);
         try {
-          const res = await axios.post(BASE + '/chat', {
-            message: raw,
-            sessionId: sid + '-q' + stepR.current,
-          });
+          const res = await axios.post(
+              BASE + '/chat',
+              {message: raw, sessionId: sid + '-q' + stepR.current});
           setAiTyping(false);
           if (res.data.message) {
             addMsg('ai', res.data.message);
@@ -848,11 +945,10 @@ export default function App() {
                   doGrade();
                 }
               });
-            } else {
+            } else
               speak(res.data.message);
-            }
           }
-        } catch (err) {
+        } catch {
           setAiTyping(false);
           addMsg('sys', 'Connection error.');
         }
@@ -866,21 +962,19 @@ export default function App() {
           setStep(n);
           stepR.current = n;
           loadQ(n, plansR.current);
-        } else {
+        } else
           setScreen('results');
-        }
       }, [step, loadQ, stopAll]);
 
       const skip = useCallback(() => {
-        clearTimeout(timerR.current);
         stopAll();
         pendingR.current = false;
         voice.stop();
         setListening(false);
         const pl = plansR.current[step - 1];
-        const skippedQ = {
+        const skipped = {
           questionNumber: step,
-          area: pl ? pl.area : 'Skipped',
+          area: pl?.area || 'Skipped',
           angle: '',
           totalScore: 0,
           knowledgeScore: 0,
@@ -894,23 +988,22 @@ export default function App() {
           feedback: 'Skipped.',
           strengths: '',
           improvement: 'Attempt every question.',
-          resources: [],
+          resources: []
         };
-        const updatedHistory = [...historyR.current, skippedQ];
-        setHistory(updatedHistory);
+        const updated = [...historyR.current, skipped];
+        setHistory(updated);
         if (step === TOTAL_Q && !savedR.current) {
           savedR.current = true;
-          saveSessionNow(updatedHistory, itype, diff);
+          saveInterview(updated, itype, diff);
         }
         if (step < TOTAL_Q) {
           const n = step + 1;
           setStep(n);
           stepR.current = n;
           loadQ(n, plansR.current);
-        } else {
+        } else
           setScreen('results');
-        }
-      }, [step, voice, loadQ, stopAll, itype, diff, saveSessionNow]);
+      }, [step, voice, loadQ, stopAll, itype, diff, saveInterview]);
 
       const restart = useCallback(() => {
         stopAll();
@@ -926,89 +1019,133 @@ export default function App() {
         setScreen('landing');
       }, [stopAll]);
 
-      const startGd = useCallback(async () => {
-        const topic = gdCustom && gdCustomT.trim() ? gdCustomT.trim() : gdTopic;
-        const personas = GD_PERSONAS[Math.floor(Math.random() * 3)];
-        const newSid = uid();
-        gdSidR.current = newSid;
-        gdPersR.current = personas;
-        gdCvR.current = [];
-        setGdMsgs([]);
-        setGdResult(null);
-        setGdDone(false);
-        setGdTLeft(GD_TIME);
-        setGdTyping(true);
-        setScreen('gd');
-        try {
-          const res = await axios.post(
-              BASE + '/gd-start', {topic, sessionId: newSid, personas});
-          setGdTyping(false);
-          addGdMsg('panel', res.data.message);
-          gdCvR.current = [{role: 'assistant', content: res.data.message}];
-          setGdTimerOn(true);
+      const parseGdLines = useCallback((raw, personas) => {
+        const results = raw.split(/\n+/)
+                            .map(l => l.trim())
+                            .filter(Boolean)
+                            .filter(l => !l.startsWith('GD_COMPLETE'))
+                            .map(l => {
+                              const ci = l.indexOf(':');
+                              return ci > -1 && ci < 15 ? {
+                                name: l.slice(0, ci).trim(),
+                                text: l.slice(ci + 1).trim()
+                              } :
+                                                          null;
+                            })
+                            .filter(l => l && l.text.length > 1);
+        return results.length > 0 ? results : [{
+          name: personas[0]?.name || 'Panel',
+          text: raw.split('GD_COMPLETE')[0].trim()
+        }];
+      }, []);
+
+      const playGdSequence = useCallback(async (lines) => {
+        const fullText = lines.map(l => l.name + ': ' + l.text).join('\n');
+        gdCvR.current =
+            [...gdCvR.current, {role: 'assistant', content: fullText}];
+        setGdTimerOn(true);
+        for (const line of lines) {
+          addGdMsg('panel', line.name + ': ' + line.text);
           if (audioR.current) {
             setGdSpk(true);
-            speakNatural(res.data.message, () => setGdSpk(false));
+            setGdSpeaker(line.name);
+            await speakAsync(line.text);
+            setGdSpk(false);
+            setGdSpeaker('');
+            await new Promise(r => setTimeout(r, 350));
           }
-        } catch (err) {
-          setGdTyping(false);
-          addGdMsg('sys', 'Connection error.');
         }
-      }, [gdCustom, gdCustomT, gdTopic, addGdMsg]);
+      }, [addGdMsg]);
 
-      const submitGd = useCallback(async () => {
-        const raw = (gdEditR.current ? gdEditR.current.textContent : tx).trim();
-        if (!raw || gdTyping || gdDone) return;
-        gdVoice.stop();
-        setListening(false);
-        setTx('');
-        if (gdEditR.current) gdEditR.current.textContent = '';
-        addGdMsg('you', raw);
-        gdCvR.current = [...gdCvR.current, {role: 'user', content: raw}];
-        setGdTyping(true);
-        try {
-          const res = await axios.post(
-              BASE + '/gd-chat', {message: raw, sessionId: gdSidR.current});
-          setGdTyping(false);
-          if (res.data.message) {
-            addGdMsg('panel', res.data.message);
-            gdCvR.current = [
-              ...gdCvR.current, {role: 'assistant', content: res.data.message}
-            ];
-            if (audioR.current) {
-              setGdSpk(true);
-              speakNatural(res.data.message, () => setGdSpk(false));
+      const startGd = useCallback(
+          async () => {
+            const topic =
+                gdCustom && gdCustomT.trim() ? gdCustomT.trim() : gdTopic;
+            const personas = GD_PERSONAS[Math.floor(Math.random() * 3)];
+            const newSid = uid();
+            gdSidR.current = newSid;
+            gdPersR.current = personas;
+            gdCvR.current = [];
+            setGdMsgs([]);
+            setGdResult(null);
+            setGdDone(false);
+            setGdTLeft(TIMER);
+            setGdTyping(true);
+            setScreen('gd');
+            try {
+              const res = await axios.post(
+                  BASE + '/gd-start', {topic, sessionId: newSid, personas});
+              setGdTyping(false);
+              await playGdSequence(parseGdLines(res.data.message, personas));
+            } catch {
+              setGdTyping(false);
+              addGdMsg('sys', 'Connection error.');
             }
-            if (res.data.isComplete) {
-              setGdTimerOn(false);
-              setGdDone(true);
-              doGdGrade();
-            }
-          }
-        } catch (err) {
-          setGdTyping(false);
-          addGdMsg('sys', 'Connection error.');
-        }
-      }, [tx, gdTyping, gdDone, addGdMsg, gdVoice]);
+          },
+          [
+            gdCustom, gdCustomT, gdTopic, addGdMsg, parseGdLines, playGdSequence
+          ]);
 
-      async function doGdGrade() {
+      const submitGd = useCallback(
+          async () => {
+            const raw = (getRef(gdEditR) || tx).trim();
+            if (!raw || gdTyping || gdDone) return;
+            gdVoice.stop();
+            setListening(false);
+            setTx('');
+            if (gdEditR.current) gdEditR.current.textContent = '';
+            addGdMsg('you', raw);
+            gdCvR.current = [...gdCvR.current, {role: 'user', content: raw}];
+            setGdTyping(true);
+            try {
+              const res = await axios.post(
+                  BASE + '/gd-chat', {message: raw, sessionId: gdSidR.current});
+              setGdTyping(false);
+              if (res.data.message) {
+                await playGdSequence(
+                    parseGdLines(res.data.message, gdPersR.current));
+                if (res.data.isComplete) {
+                  setGdTimerOn(false);
+                  setGdDone(true);
+                  doGdGrade();
+                }
+              }
+            } catch {
+              setGdTyping(false);
+              addGdMsg('sys', 'Connection error.');
+            }
+          },
+          [
+            tx, gdTyping, gdDone, addGdMsg, gdVoice, parseGdLines,
+            playGdSequence
+          ]);
+
+      const doGdGrade = useCallback(async () => {
         setGdTimerOn(false);
-        clearTimeout(gdTimerR.current);
         stopAll();
         setGdDone(true);
         addGdMsg('sys', 'Evaluating GD performance...');
         const topic = gdCustom && gdCustomT.trim() ? gdCustomT.trim() : gdTopic;
         try {
-          const res = await axios.post(BASE + '/gd-grade', {
-            conversation: gdCvR.current,
+          const res = await axios.post(
+              BASE + '/gd-grade',
+              {conversation: gdCvR.current, topic, level: diff});
+          const data = res.data.data;
+          setGdResult(data);
+          DB.save({
+            id: uid(),
+            date: new Date().toISOString(),
+            mode: 'gd',
             topic,
-            level: diff,
+            diff,
+            totalScore: data.totalScore || 0,
+            maxScore: 10,
+            result: data
           });
-          setGdResult(res.data.data);
-        } catch (err) {
+        } catch {
           addGdMsg('sys', 'Error evaluating GD.');
         }
-      }
+      }, [diff, addGdMsg, stopAll, gdCustom, gdCustomT, gdTopic]);
 
       const startStress = useCallback(async () => {
         const newSid = uid();
@@ -1017,7 +1154,7 @@ export default function App() {
         setSMsgs([]);
         setSRes(null);
         setSDone(false);
-        setSTLeft(S_TIME);
+        setSTLeft(TIMER);
         setSTyping(true);
         setSSpk(false);
         setScreen('stress');
@@ -1032,14 +1169,14 @@ export default function App() {
             setSSpk(true);
             speakNatural(res.data.message, () => setSSpk(false));
           }
-        } catch (err) {
+        } catch {
           setSTyping(false);
           addSMsg('sys', 'Connection error.');
         }
       }, [diff, addSMsg]);
 
       const submitStress = useCallback(async () => {
-        const raw = (sEditR.current ? sEditR.current.textContent : tx).trim();
+        const raw = (getRef(sEditR) || tx).trim();
         if (!raw || sTyping || sDone) return;
         sVoice.stop();
         setListening(false);
@@ -1067,15 +1204,14 @@ export default function App() {
               doStressGrade();
             }
           }
-        } catch (err) {
+        } catch {
           setSTyping(false);
           addSMsg('sys', 'Connection error.');
         }
       }, [tx, sTyping, sDone, addSMsg, sVoice]);
 
-      async function doStressGrade() {
+      const doStressGrade = useCallback(async () => {
         setSTimerOn(false);
-        clearTimeout(sTimerR.current);
         stopAll();
         setSDone(true);
         addSMsg('sys', 'Evaluating composure...');
@@ -1083,13 +1219,23 @@ export default function App() {
           const res = await axios.post(
               BASE + '/stress-grade',
               {conversation: sCvR.current, level: diff});
-          setSRes(res.data.data);
-        } catch (err) {
+          const data = res.data.data;
+          setSRes(data);
+          DB.save({
+            id: uid(),
+            date: new Date().toISOString(),
+            mode: 'stress',
+            diff,
+            totalScore: data.totalScore || 0,
+            maxScore: 10,
+            result: data
+          });
+        } catch {
           addSMsg('sys', 'Error evaluating.');
         }
-      }
+      }, [diff, addSMsg, stopAll]);
 
-      async function handleFile(e) {
+      const handleFile = useCallback(async e => {
         const f = e.target.files[0];
         if (!f) return;
         const fd = new FormData();
@@ -1098,25 +1244,24 @@ export default function App() {
           setUpState('uploading');
           const res = await axios.post(BASE + '/upload-resume', fd);
           setUpState(res.data.hasText ? 'ready' : 'fail');
-        } catch (err) {
+        } catch {
           setUpState('fail');
         }
-      }
+      }, []);
 
-      async function analyse() {
+      const analyse = useCallback(async () => {
         if (upState !== 'ready') return;
         setAnalysing(true);
         try {
           const res = await axios.post(
-              BASE + '/analyse-resume',
-              {type: itype, difficulty: diff, level: diff});
+              BASE + '/analyse-resume', {type: itype, difficulty: diff});
           setPlans(res.data.plans);
           setScreen('prep');
-        } catch (err) {
+        } catch {
           alert('Could not analyse resume. Please retry.');
         }
         setAnalysing(false);
-      }
+      }, [upState, itype, diff]);
 
       const total = history.reduce((a, b) => a + b.totalScore, 0);
       const maxScore = TOTAL_Q * 10;
@@ -1127,198 +1272,113 @@ export default function App() {
           0;
       const curPlan = plans[step - 1];
       const progPct = step > 0 ? ((step - 1) / TOTAL_Q) * 100 : 0;
+      const interrupt = (editRef, voiceHook) => () => {
+        stopAll();
+        setTx('');
+        if (editRef.current) editRef.current.textContent = '';
+        setListening(true);
+        voiceHook.start();
+      };
 
-      useEffect(() => {
-        if (screen !== 'results') return;
-        const allRes = history.flatMap(h => h.resources || []);
-        if (allRes.length > 0) return;
-        const areas =
-            history.map(h => h.area).filter(a => a && a !== 'Skipped');
-        if (!areas.length) return;
-        setSuggestLoading(true);
-        setSuggestions([]);
-        axios
-            .post(
-                BASE + '/suggest-resources',
-                {areas, type: itype, difficulty: diff})
-            .then(res => {
-              setSuggestions(res.data.resources || []);
-            })
-            .catch(() => {})
-            .finally(() => setSuggestLoading(false));
-      }, [screen]);
+      if (screen === 'history')
+        return <HistoryScreen onClose =
+                {() => setScreen('landing')
+                } />;
 
-      if (screen === 'results') {
-        const rPct = pct(total, maxScore);
-        const allRes = history.flatMap(h => h.resources || []);
+  if (screen === 'results') {
+    const rPct   = pct(total, maxScore);
+    const allRes = history.flatMap(h => h.resources || []);
     return (
-      <div className='results'><div className='res-inner'>
-        <div className='res-header a0'>
-          <p className='res-eyebrow'>{
-    itype} / {diff}</p>
-          <h1 className='res-title'>Complete.</h1>
-        </div>
-        <div className='res-score a1'>
-          <span className='res-big'>{total}</span>
-          <span className="res-denom">/{maxScore}</span>
-          <span className="res-verdict">
-            {rPct >= 85 ? 'Outstanding.' : rPct >= 70 ? 'Strong candidate.' : rPct >= 50 ? 'Room to develop.' : 'Significant gaps.'}
-          </span>
-        </div>
-        <div className="res-bars a2">
-          {[['Know','knowledgeScore'],['Conf','confidenceScore'],['Align','resumeAlignment'],['Depth','depth'],['Prob','problemSolving'],['Acc','accuracy']].map(([l, k]) => (
-            <div key={k} className="res-bar">
-              <span className="res-bar-lbl">{l}</span>
-              <div className='res-bar-track'><div className='res-bar-fill' style={
-    { width: avg(k) + '%' }} /></div>
-              <span className='res-bar-val'>{avg(k)}%</span>
+      <div className="results"><div className="res-inner">
+        <div className="res-header a0"><p className="res-eyebrow">{itype} /{
+                    diff} < /p><h1 className="res-title">Complete.</h1>
             </div>
-          ))
-      }
-      </div>
-        <div className="res-qs a3">
+        <div className="res-score a1">
+          <span className="res-big">{total}</span><
+            span className = 'res-denom' > /{maxScore}</span >
+            <span className = 'res-verdict'>{
+                rPct >= 85     ? 'Outstanding.' :
+                    rPct >= 70 ? 'Strong candidate.' :
+                    rPct >= 50 ? 'Room to develop.' :
+                                 'Significant gaps.'} < /span>
+        </div >
+            <div className = 'res-bars a2'> {[['Know','knowledgeScore'],['Conf','confidenceScore'],['Align','resumeAlignment'],['Depth','depth'],['Prob','problemSolving'],['Acc','accuracy']].map(([l, k]) => (
+            <div key={k} className='res-bar'><span className='res-bar-lbl'>{l}</span><div className="res-bar-track"><div className="res-bar-fill" style={{ width: avg(k) + '%' }} /></div><span className="res-bar-val">{avg(k)}%</span></div>
+          ))}
+        </div>
+        <div className='res-qs a3'>
           {history.map((item, i) => (
             <div key={i} className={'res-q' + (item.aiDetected ? ' flagged' : '')}>
-              <div className="res-q-head">
-                <div className="res-q-left">
-                  <div className="res-q-n">{i + 1}</div>
-          <span className = 'res-q-area'>{item.area} <
-          /span>
-                </div > <div className = 'res-q-scores'>
-          <span>K{item.knowledgeScore} <
-          /span>
-                  <span>C{item.confidenceScore}</span >
-          <span className = 'res-q-total'> {
-        item.totalScore
-      }
-      /10</span > </div>
+              <div className='res-q-head'>
+                <div className='res-q-left'><div className='res-q-n'>{i + 1}</div><span className="res-q-area">{item.area}</span></div>
+                <div className="res-q-scores"><span>K{item.knowledgeScore}</span><span>C{item.confidenceScore}</span><span className="res-q-total">{item.totalScore}/10</span></div>
               </div>
-          <p className = 'res-q-fb'>{item.feedback} <
-          /p>
-              {item.improvement && <p className="res-q-tip">{item.improvement}</p >
-      }
-      </div>
-          ))}
-        </div><div className = 'res-prep-section a4'>
-          <div className = 'res-learn-header'><div className = 'res-learn-icon'>
-          <svg viewBox = '0 0 20 20' fill = 'none' stroke =
-               'currentColor' strokeWidth = '1.6' strokeLinecap =
-                   'round' strokeLinejoin = 'round'>
-          <path d = 'M2 5l8-3 8 3v7c0 4-8 6-8 6S2 16 2 12V5z' />
-          <path d = 'M10 8v4M10 14v.5' /></svg>
-            </div><div>
-          <h2 className = 'res-prep-title'>Learn&amp;
-      Improve<
-          /h2>
-              <p className="res-learn-sub">
-                {allRes.length > 0
-                  ? 'Curated resources based on your answers this session'
-                  : 'Preparation resources for your interview topics'}
-              </p>
-          </div>
-          </div>
-
-      {allRes.length > 0 && (
-            history.filter(h => h.resources && h.resources.length > 0).map((item, gi) => {
-    const qPct = pct(item.totalScore, 10);
-              return (
-                <div key={gi} className='res-learn-group'>
-                  <div className='res-learn-group-head'>
-                    <div className='res-q-n' style={{
-      flexShrink: 0 }}>{item.questionNumber}</div>
-                    <span className="res-learn-area">{item.area}</span>
-                    <span className={'res-learn-score ' + sClass(qPct * 10)}>{
-      item.totalScore}/10</span>
-                  </div>
-                  {item.improvement && (
-                    <p className="res-learn-gap">
-                      <span className="res-learn-gap-icon">&#8594;</span>
-                      {item.improvement}
-                    </p>
-                  )}
-                  <ResourceGrid resources={item.resources} />
-                </div>
-              );
-            })
-          )}
-
-          {allRes.length === 0 && suggestLoading && (
-            <div className="res-suggest-loading">
-              <div className="suggest-spinner" />
-              <p>Fetching preparation resources for your topics...</p>
+              <p className="res-q-fb">{item.feedback}</p>
+              {item.improvement && <p className='res-q-tip'>{item.improvement}</p>}
             </div>
-          )}
-
+          ))}
+        </div>
+        <div className="res-prep-section a4">
+          <div className="res-learn-header">
+            <div className="res-learn-icon"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 5l8-3 8 3v7c0 4-8 6-8 6S2 16 2 12V5z"/><path d='M10 8v4M10 14v.5'/></svg></div>
+            <div><h2 className='res-prep-title'>Learn &amp; Improve</h2><p className="res-learn-sub">{allRes.length > 0 ? 'Curated resources based on your answers' : 'Preparation resources for your topics'}</p></div>
+          </div>
+          {allRes.length > 0 && history.filter(h => h.resources?.length > 0).map((item, gi) => (
+            <div key={gi} className='res-learn-group'>
+              <div className='res-learn-group-head'><div className='res-q-n' style={{
+              flexShrink: 0 }}>{item.questionNumber}</div><span className="res-learn-area">{item.area}</span><span className={'res-learn-score ' + sClass(pct(item.totalScore, 10) * 10)}>{
+              item.totalScore}/10</span></div>
+              {item.improvement && <p className="res-learn-gap"><span className="res-learn-gap-icon">&#8594;</span>{item.improvement}</p>}
+              <ResourceGrid resources={item.resources} />
+            </div>
+          ))}
+          {allRes.length === 0 && suggestLoading && <div className="res-suggest-loading"><div className="suggest-spinner" /><p>Fetching preparation resources...</p></div>}
           {
-    allRes.length === 0 && !suggestLoading && suggestions.length > 0 &&
-        (suggestions.map(
-            (group, gi) => (
-                <div key = {gi} className = 'res-learn-group'>
-                        <div className = 'res-learn-group-head'>
-                        <div className = 'res-q-n' style = {
-                          {
-                            flexShrink: 0
-                          }
-                        }>{gi + 1} <
-                        /div>
-                  <span className="res-learn-area">{group.area}</span >
-                        <span className = 'res-learn-score md' style = {
-                          {
-                            background: 'rgba(91,157,255,.1)',
-                                color: 'var(--acc)',
-                                border: '1px solid rgba(91,157,255,.2)'
-                          }
-                        }>Prepare</span>
-                </div>
-                        <p className = 'res-learn-gap'>
-                        <span className = 'res-learn-gap-icon'>&
-                    #8594;
-                </span>
-                  Study these resources before attempting this topic in an interview
-                </p>
-                <ResourceGrid resources = {
-                  group.resources || []
-                } />
-              </div>)))}
-
-          {
-    allRes.length === 0 && !suggestLoading && suggestions.length === 0 &&
-        (<p style = {
-           {
-             color: 'var(--muted)', fontSize: '14px', textAlign: 'center',
-                 padding: '24px 0'
-           }
-         }>No resources available.Try again after completing an interview
-             .</p>
-          )}
-        </div><div className = 'res-actions a5'>
-         <button className = 'res-ghost' onClick = {restart}>New
-             Session</button>
-        </div></div></div>);
+              allRes.length === 0 && !suggestLoading &&
+                  suggestions.length > 0 &&
+                  suggestions.map(
+                      (group, gi) => (
+                          <div key = {gi} className = 'res-learn-group'>
+                              <div className = 'res-learn-group-head'>
+                              <div className = 'res-q-n' style = {
+                                {
+                                  flexShrink: 0
+                                }
+                              }>{gi + 1} <
+                              /div><span className="res-learn-area">{group.area}</span >
+                              <span className = 'res-learn-score md' style = {
+                                {
+                                  background: 'rgba(91,157,255,.1)',
+                                      color: 'var(--acc)',
+                                      border: '1px solid rgba(91,157,255,.2)'
+                                }
+                              }>Prepare</span></div>
+                              <p className = 'res-learn-gap'>
+                              <span className = 'res-learn-gap-icon'>&
+      # 8594;
+                          </span>Study these before attempting this topic</p>
+                          <ResourceGrid resources = {
+                            group.resources || []
+                          } />
+            </div>))}
+          {allRes.length === 0 && !suggestLoading && suggestions.length === 0 && <p style={{
+                color: 'var(--muted)', fontSize: '14px', textAlign: 'center',
+                    padding: '24px 0' }}>No resources available.</p>}
+        </div>
+        <div className='res-actions a5'><button className='res-ghost' onClick={restart}>New Session</button></div>
+      </div></div>
+    );
   }
 
   if (screen === 'prep') {
     return (
       <div className='prep'><div className='prep-box'>
-        <div className='prep-header a0'>
-          <h1 className='prep-title'>Your Interview</h1>
-          <p className="prep-meta">{itype} / {
-      diff} / {TOTAL_Q} Questions</p>
-        </div>
-        <div className="prep-list a1">
-          {plans.map((pl, i) => (
-            <div key={i} className="prep-item">
-              <div className="prep-n">{i + 1}</div>
-              <span className='prep-area'>{pl.area}</span>
-              <span className="prep-angle">{pl.angle}</span>
-            </div>
-          ))}
-        </div>
+        <div className='prep-header a0'><h1 className='prep-title'>Your Interview</h1><p className="prep-meta">{itype} / {
+                diff} / {TOTAL_Q} Questions</p></div>
+        <div className="prep-list a1">{plans.map((pl, i) => <div key={i} className="prep-item"><div className="prep-n">{i + 1}</div><span className='prep-area'>{pl.area}</span><span className="prep-angle">{pl.angle}</span></div>)}</div>
         <div className='prep-footer a2'>
           <button className='prep-back' onClick={() => setScreen('landing')}>Back</button>
-          <button className="prep-begin" onClick={() => {
-            setHistory([]); setStep(1); stepR.current = 1; setScreen('interview'); loadQ(1, plans);
-          }}>Start Interview</button>
+          <button className="prep-begin" onClick={() => { setHistory([]); setStep(1); stepR.current = 1; setScreen('interview'); loadQ(1, plans); }}>Start Interview</button>
         </div>
       </div></div>
     );
@@ -1328,18 +1388,10 @@ export default function App() {
     return (
       <div className="iv">
         <aside className="iv-side">
-          <div className="ivs-brand">
-            <div className="ivs-logo">
-              <svg viewBox="0 0 12 12"><path d="M2 6h8M6 2v8" strokeLinecap="round" /></svg>
-            </div>
-            <span className='ivs-name'>Practice Room</span>
-          </div>
-          <div className='ivs-prog'>
-            <div className='ivs-prog-bar'><div className='ivs-prog-fill' style={
-      { width: progPct + '%' }} /></div>
-            <div className='ivs-prog-nums'><span>{
-      step}/{TOTAL_Q}</span><span>{Math.round(progPct)}%</span></div>
-          </div>
+          <div className="ivs-brand"><div className="ivs-logo"><svg viewBox="0 0 12 12"><path d="M2 6h8M6 2v8" strokeLinecap="round" /></svg></div><span className='ivs-name'>Practice Room</span></div>
+          <div className='ivs-prog'><div className='ivs-prog-bar'><div className='ivs-prog-fill' style={
+                { width: progPct + '%' }} /></div><div className='ivs-prog-nums'><span>{
+                step}/{TOTAL_Q}</span><span>{Math.round(progPct)}%</span></div></div>
           <div className="ivs-steps">
             {plans.map((pl, i) => (
               <div key={i} className={'ivs-step' + (i + 1 === step ? ' now' : i + 1 < step ? ' done' : '')}>
@@ -1349,52 +1401,27 @@ export default function App() {
             ))}
           </div>
           <div className='ivs-bottom'>
-            {timerOn && (
-              <div className='ivs-timer' style={{
-      color: tColor(tLeft) }}>{fmtTime(tLeft)}</div>
-            )}
-            <div className="ivs-btn" onClick={() => { if (audioOn && window.speechSynthesis) window.speechSynthesis.cancel(); setAudioOn(p => !p); }}>
-              {audioOn ? 'Audio On' : 'Audio Off'}
-            </div>
+            {timerOn && <div className='ivs-timer' style={{
+              color: tColor(tLeft) }}>{fmtTime(tLeft)}</div>}
+            <div className="ivs-btn" onClick={() => { if (audioOn) window.speechSynthesis?.cancel(); setAudioOn(p => !p); }}>{audioOn ? 'Audio On' : 'Audio Off'}</div>
             <button className='ivs-btn danger' onClick={skip}>Skip Question</button>
           </div>
         </aside>
         <main className="iv-main">
-          <div className="iv-topbar">
-            <div className="ivt-left">
-              <div className={'ivt-dot' + (speaking ? ' speaking' : aiTyping ? ' active' : '')} />
-              <span className='ivt-status'>{speaking ? 'Speaking' : aiTyping ? 'Thinking' : 'Listening'}</span>
-            </div>
-            {curPlan && <span className='ivt-topic'>{curPlan.area}</span>}
-          </div>
+          <div className="iv-topbar"><div className="ivt-left"><div className={'ivt-dot' + (speaking ? ' speaking' : aiTyping ? ' active' : '')} /><span className='ivt-status'>{speaking ? 'Speaking' : aiTyping ? 'Thinking' : 'Listening'}</span></div>{curPlan && <span className='ivt-topic'>{curPlan.area}</span>}</div>
           <MsgList list={msgs} label='AI' typing={aiTyping} endRef={
-      endR} />
-          {feedback && (
-            <ScoreCard
-              data={feedback}
-              metrics={[['Knowledge',feedback.knowledgeScore],['Confidence',feedback.confidenceScore],['Relevance',feedback.resumeAlignment],['Depth',feedback.depth]]}
-              onNext={goNext}
-              nextLabel={step < TOTAL_Q ? 'Next Question' : 'View Results'}
-            />
-          )}
-          {!feedback && started && (
-            <VoiceInput
-              editRef={editR} tx={tx} setTx={setTx}
-              listening={listening} setListening={setListening}
-              voice={voice} onSubmit={submitAnswer} disabled={aiTyping}
-              speaking={speaking}
-              onInterrupt={
-        () => {
-          stopAll();
-          setTx('');
-          if (editR.current) editR.current.textContent = '';
-          setListening(true);
-          voice.start();
-        }}
-            />
-          )}
-        </main>
-      </div>
+              endR} />
+          {feedback && <ScoreCard data={feedback} metrics={[['Knowledge',feedback.knowledgeScore],['Confidence',feedback.confidenceScore],['Relevance',feedback.resumeAlignment],['Depth',feedback.depth]]} onNext={goNext} nextLabel={step < TOTAL_Q ? 'Next Question' : 'View Results'} />}
+          {
+            !feedback && started &&
+                <VoiceInput editRef = {editR} tx = {tx} setTx =
+                     {setTx} listening = {listening} setListening =
+                         {setListening} voice = {voice} onSubmit =
+                             {submitAnswer} disabled = {aiTyping} speaking =
+                                 {speaking} onInterrupt =
+                 { interrupt(editR, voice) } />}
+        </main><
+                    /div>
     );
   }
 
@@ -1403,127 +1430,70 @@ export default function App() {
     return (
       <div className="iv">
         <aside className="iv-side gd-side">
-          <div className="ivs-brand">
-            <div className="ivs-logo gd-logo">
-              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <circle cx="4" cy="4" r="2" /><circle cx='9' cy='4' r='2' />
-                <path d='M1 11c0-2 1.5-3 3-3h4c1.5 0 3 1 3 3' />
-              </svg>
-            </div>
-            <span className='ivs-name'>Group Discussion</span>
-          </div>
-          <div className='gd-topic-card'>
-            <p className='gd-topic-label'>Topic</p>
-            <p className="gd-topic-text">{activeTopic}</p>
-          </div>
+          <div className="ivs-brand"><div className="ivs-logo gd-logo"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><circle cx="4" cy="4" r="2" />
+                    <circle cx = '9' cy = '4' r = '2' />
+                    <path d = 'M1 11c0-2 1.5-3 3-3h4c1.5 0 3 1 3 3' />
+                    </svg></div>
+                    <span className = 'ivs-name'>Group Discussion</span></div>
+                    <div className = 'gd-topic-card'>
+                    <p className = 'gd-topic-label'>
+                        Topic</p><p className="gd-topic-text">{activeTopic}</p>
+                    </div>
           <div className="gd-personas">
-            <p className="gd-personas-label">Participants</p>
-            {gdPersR.current.map((p, i) => (
-              <div key={i} className='gd-persona-item'>
-                <div className='gd-persona-av' style={{
-        background: P_COLORS[i] }}>{p.name[0]}</div>
-                <div>
-                  <span className="gd-persona-name">{p.name}</span>
-                  <span className='gd-persona-stance'>{p.stance}</span>
-                </div>
-              </div>
-            ))}
-            <div className="gd-persona-item">
-              <div className="gd-persona-av you-av">Y</div>
-              <div><span className='gd-persona-name'>You</span><span className="gd-persona-stance">Make your case</span></div>
-            </div>
+            <p className="gd-personas-label">Participants</p>{
+                        gdPersR.current.map(
+                            (p, i) => (
+                                <div key = {i} className = 'gd-persona-item'>
+                                <div className = 'gd-persona-av' style = {
+                                  {
+                background: P_COLORS[i]
+                                  }
+                                }>{p.name[0]} <
+                                /div>
+                <div><span className="gd-persona-name">{p.name}</span >
+                                <span className = 'gd-persona-stance'>{
+                                    p.stance} the
+                                    topic<
+                                        /span><span className="gd-persona-style">{p.style.split(',')[0]}</span>
+                                </div>
+              </div>))} <
+                    div className = 'gd-persona-item' >
+                <div className = 'gd-persona-av you-av'>
+                    Y</div><div><span className="gd-persona-name">You</span>
+                <span className = 'gd-persona-stance'>Make
+            your case</span></div></div>
           </div>
-          <div className="ivs-bottom">
-            {gdTimerOn && !gdDone && (
-              <div className="ivs-timer" style={{ color: tColor(gdTLeft) }}>{fmtTime(gdTLeft)}</div>
-            )}
-            {!gdDone && (
-              <button className='ivs-btn danger' onClick={() => {
-          setGdTimerOn(false);
-          doGdGrade(); }}>
-                End Discussion
-              </button>
-            )}
+                <div className = 'ivs-bottom'>{
+                  gdTimerOn &&!gdDone && < div className = 'ivs-timer' style = {
+                    { color:
+              tColor(gdTLeft) }}>{fmtTime(gdTLeft)}</div>}
+            {!gdDone && <button className="ivs-btn danger" onClick={() => { setGdTimerOn(false); doGdGrade(); }}>End Discussion</button>}
           </div>
         </aside>
-        <main className="iv-main">
-          <div className="iv-topbar">
-            <div className="ivt-left">
-              <div className={'ivt-dot' + (gdTyping ? ' active' : gdSpk ? ' speaking' : '')} />
-              <span className='ivt-status gd-status'>
-                {gdTyping ? 'Panel thinking...' : gdSpk ? 'Panel speaking...' : gdDone ? 'Discussion ended' : 'Your turn'}
-              </span>
-            </div>
-            <span className='ivt-topic gd-badge'>GD Round</span>
+        <main className='iv-main'>
+          <div className='iv-topbar'>
+            <div className='ivt-left'><div className={
+            'ivt-dot' + (gdTyping ? ' active' : gdSpk ? ' speaking' : '')} /><span className="ivt-status gd-status">{gdTyping ? 'Panel thinking...' : gdSpk && gdSpeaker ? gdSpeaker + ' is speaking...' : gdDone ? 'Discussion ended' : 'Your turn to speak'}</span></div>
+            <span className="ivt-topic gd-badge">GD Round</span>
           </div>
-          <div className='iv-msgs gd-msgs'>
+          <div className="iv-msgs gd-msgs">
             {gdMsgs.map((m, i) => {
-            if (m.role === 'sys')
-              return <div key = {i} className = 'msg sys'>
-                  <span className = 'msg-sys-text'>{m.content} < /span></div > ;
-            if (m.role === 'you')
-              return (
-                  <div key = {i} className = 'msg you'>
-                  <div className = 'msg-av you-av-sm'>You<
-                      /div>
-                  <div className="msg-body">
-                    <p className="msg-text">{m.content}</p>
-                  <p className = 'msg-ts'>{m.ts.toLocaleTimeString(
-                      [], {hour: '2-digit', minute: '2-digit'})} <
-                  /p>
-                  </div >
-                  </div>
-              );
+              if (m.role === 'sys') return <div key={i} className="msg sys"><span className="msg-sys-text">{m.content}</span></div>;
+              if (m.role === 'you') return <div key={i} className="msg you"><div className="msg-av you-av-sm">You</div><div className='msg-body'><p className='msg-text'>{m.content}</p><p className="msg-ts">{m.ts.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</p></div></div>;
               const ci = m.content.indexOf(':');
               const name = ci > -1 && ci < 12 ? m.content.slice(0, ci).trim() : 'Panel';
               const text = ci > -1 && ci < 12 ? m.content.slice(ci + 1).trim() : m.content;
-              const pi = gdPersR.current.findIndex(p => p.name === name);
-              return (
-                <div key={i} className="msg gd-panel-msg">
-                  <div className="msg-av gd-av" style={{ background: P_COLORS[pi] || P_COLORS[0] }}>{name[0]}</div>
-                  <div className = 'msg-body'>
-                  <p className = 'msg-speaker'>{name} <
-                  /p>
-                    <p className="msg-text">{text}</p >
-                  <p className = 'msg-ts'>{m.ts.toLocaleTimeString(
-                      [], {hour: '2-digit', minute: '2-digit'})} <
-                  /p>
-                  </div >
-                  </div>
-              );
-            })}
-            {gdTyping && (
-              <div className="typing-row">
-                <div className="typing-av">GD</div>
-                  <div className = 'typing-bubble'><span /><span /><span />
-                  </div>
-              </div>)}
+              const pi   = gdPersR.current.findIndex(p => p.name === name);
+              return <div key={i} className='msg gd-panel-msg'><div className='msg-av gd-av' style={{
+            background: P_COLORS[pi] || P_COLORS[0] }}>{name[0]}</div><div className="msg-body"><p className="msg-speaker">{name}</p><p className='msg-text'>{text}</p><p className="msg-ts">{m.ts.toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</p></div></div>;
+        })}
+            {gdTyping && <div className='typing-row'><div className='typing-av'>GD</div><div className="typing-bubble"><span /><span /><span /></div></div>}
             <div ref={
-            gdEndR} />
+      gdEndR} />
           </div>
-          {gdResult && (
-            <ScoreCard
-              data={gdResult}
-              metrics={[['Init',gdResult.initiationScore],['Content',gdResult.contentScore],['Lead',gdResult.leadershipScore],['Comm',gdResult.communicationScore]]}
-              onNext={restart} nextLabel='Back to Home' title='GD Evaluation'
-            />
-          )}
-          {!gdResult && !gdDone && (
-            <VoiceInput
-              editRef={gdEditR} tx={tx} setTx={setTx}
-              listening={listening} setListening={setListening}
-              voice={gdVoice} onSubmit={submitGd} disabled={gdTyping}
-              label='Contribute' speaking={gdSpk}
-              onInterrupt={
-            () => {
-              stopAll();
-              setTx('');
-              if (gdEditR.current) gdEditR.current.textContent = '';
-              setListening(true);
-              gdVoice.start();
-            }}
-            />
-          )}
+          {gdResult && <ScoreCard data={gdResult} metrics={[['Init',gdResult.initiationScore],['Content',gdResult.contentScore],['Lead',gdResult.leadershipScore],['Comm',gdResult.communicationScore]]} onNext={restart} nextLabel='Back to Home' title='GD Evaluation' />}
+          {!gdResult && !gdDone && <VoiceInput editRef={gdEditR} tx={tx} setTx={setTx} listening={listening} setListening={setListening} voice={gdVoice} onSubmit={submitGd} disabled={gdTyping} label='Contribute' speaking={gdSpk} onInterrupt={
+      interrupt(gdEditR, gdVoice)} />}
         </main>
       </div>
     );
@@ -1533,69 +1503,21 @@ export default function App() {
     return (
       <div className="iv">
         <aside className="iv-side stress-side">
-          <div className="ivs-brand">
-            <div className="ivs-logo stress-logo">
-              <svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round">
-                <path d="M6 1v6M6 9v2" /><circle cx='6' cy='6' r='5' />
-              </svg>
-            </div>
-            <span className='ivs-name'>Stress Interview</span>
-          </div>
-          <div className='stress-info-card'>
-            <p className='stress-info-title'>What to expect</p>
-            <ul className="stress-info-list">
-              {['Deliberate interruptions','Your claims challenged','Silence as pressure','Impossible comparisons','Stay calm. Hold ground.'].map((t, i) => (
-                <li key={i}>{t}</li>
-              ))}
-            </ul>
-          </div>
+          <div className="ivs-brand"><div className="ivs-logo stress-logo"><svg viewBox="0 0 12 12" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"><path d="M6 1v6M6 9v2" /><circle cx='6' cy='6' r='5' /></svg></div><span className='ivs-name'>Stress Interview</span></div>
+          <div className='stress-info-card'><p className='stress-info-title'>What to expect</p><ul className="stress-info-list">{['Deliberate interruptions','Your claims challenged','Silence as pressure','Impossible comparisons','Stay calm. Hold ground.'].map((t, i) => <li key={i}>{t}</li>)}</ul></div>
           <div className='ivs-bottom'>
-            {sTimerOn && !sDone && (
-              <div className='ivs-timer' style={{
-            color: tColor(sTLeft) }}>{fmtTime(sTLeft)}</div>
-            )}
-            {!sDone && (
-              <button className="ivs-btn danger" onClick={() => { setSTimerOn(false); doStressGrade(); }}>
-                End Interview
-              </button>
-            )}
+            {sTimerOn && !sDone && <div className='ivs-timer' style={{
+      color: tColor(sTLeft) }}>{fmtTime(sTLeft)}</div>}
+            {!sDone && <button className="ivs-btn danger" onClick={() => { setSTimerOn(false); doStressGrade(); }}>End Interview</button>}
           </div>
         </aside>
         <main className='iv-main'>
-          <div className='iv-topbar'>
-            <div className='ivt-left'>
-              <div className={
-            'ivt-dot' + (sSpk ? ' speaking' : sTyping ? ' active' : '')} />
-              <span className="ivt-status stress-status">
-                {sTyping ? 'Formulating...' : sDone ? 'Ended' : sSpk ? 'Speaking' : 'Awaiting response'}
-              </span>
-            </div>
-            <span className="ivt-topic stress-badge">Stress Round</span>
-          </div>
+          <div className='iv-topbar'><div className='ivt-left'><div className={
+      'ivt-dot' + (sSpk ? ' speaking' : sTyping ? ' active' : '')} /><span className="ivt-status stress-status">{sTyping ? 'Formulating...' : sDone ? 'Ended' : sSpk ? 'Speaking' : 'Awaiting response'}</span></div><span className="ivt-topic stress-badge">Stress Round</span></div>
           <MsgList list={sMsgs} label="IV" typing={sTyping} endRef={sEndR} />
-          {sRes && (
-            <ScoreCard
-              data={sRes}
-              metrics={[['Calm',sRes.composureScore],['Assert',sRes.assertivenessScore],['Recovery',sRes.recoveryScore],['Auth',sRes.authenticityScore]]}
-              onNext={restart} nextLabel='Back to Home' title='Stress Evaluation'
-            />
-          )}
-          {!sRes && !sDone && (
-            <VoiceInput
-              editRef={sEditR} tx={tx} setTx={setTx}
-              listening={listening} setListening={setListening}
-              voice={sVoice} onSubmit={submitStress} disabled={sTyping || sSpk}
-              label='Reply' speaking={sSpk}
-              onInterrupt={
-            () => {
-              stopAll();
-              setTx('');
-              if (sEditR.current) sEditR.current.textContent = '';
-              setListening(true);
-              sVoice.start();
-            }}
-            />
-          )}
+          {sRes && <ScoreCard data={sRes} metrics={[['Calm',sRes.composureScore],['Assert',sRes.assertivenessScore],['Recovery',sRes.recoveryScore],['Auth',sRes.authenticityScore]]} onNext={restart} nextLabel='Back to Home' title='Stress Evaluation' />}
+          {!sRes && !sDone && <VoiceInput editRef={sEditR} tx={tx} setTx={setTx} listening={listening} setListening={setListening} voice={sVoice} onSubmit={submitStress} disabled={sTyping || sSpk} label='Reply' speaking={sSpk} onInterrupt={
+      interrupt(sEditR, sVoice)} />}
         </main>
       </div>
     );
@@ -1604,129 +1526,64 @@ export default function App() {
   return (
     <div className="land"><div className="land-box">
       <div className="land-head a0">
-        <div className="land-brand">
-          <div className="land-logo">
-            <svg viewBox="0 0 16 16"><path d="M4 8h8M8 4v8" strokeLinecap="round" /></svg>
-          </div>
-          <h1 className='land-title'>Practice Room</h1>
-        </div>
+        <div className="land-brand"><div className="land-logo"><svg viewBox="0 0 16 16"><path d="M4 8h8M8 4v8" strokeLinecap="round" /></svg></div><h1 className='land-title'>Practice Room</h1></div>
         <button className='hist-btn' onClick={() => setScreen('history')}>
-          <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'>
-            <circle cx='8' cy='8' r='6' /><path d='M8 5v3l2 2' />
-          </svg>
+          <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'><circle cx='8' cy='8' r='6' /><path d='M8 5v3l2 2' /></svg>
           History
         </button>
       </div>
-
       <div className="land-mode-tabs a0">
-        {[
-          { id: 'interview', label: 'Interview',        icon: '&#128100;', desc: 'One-on-one personalised interview' },
-          { id: 'gd',        label: 'Group Discussion', icon: '&#128172;', desc: 'Multi-participant GD round' },
-          { id: 'stress',    label: 'Stress Interview', icon: '&#9889;',   desc: 'Pressure test your composure' },
-        ].map(m => (
+        {[{ id:'interview', label:'Interview', icon:'&#128100;', desc:'One-on-one personalised interview' }, { id:'gd', label:'Group Discussion', icon:'&#128172;', desc:'Multi-participant GD round' }, { id:'stress', label:'Stress Interview', icon:'&#9889;', desc:'Pressure test your composure' }].map(m => (
           <button key={m.id} className={'mode-tab' + (gdMode === m.id ? ' on' : '')} onClick={() => setGdMode(m.id)}>
-            <span className="mode-tab-icon" dangerouslySetInnerHTML={{ __html: m.icon }} />
-            <span className='mode-tab-label'>{m.label}</span>
-            <span className="mode-tab-desc">{m.desc}</span>
+            <span className="mode-tab-icon" dangerouslySetInnerHTML={{ __html: m.icon }} /><span className='mode-tab-label'>{m.label}</span><span className="mode-tab-desc">{m.desc}</span>
           </button>
         ))}
       </div>
-
       <div className='land-controls a1'>
         <div className='ctrl-card'>
           <label className='ctrl-upload' htmlFor='file-in'>
             <div className={'ctrl-upload-icon' + (upState === 'ready' ? ' ok' : upState === 'fail' ? ' err' : '')}>
-              {upState === 'ready'
-                ? <svg viewBox='0 0 16 16'><path d='M3 8l4 4 6-6' /></svg>
-                : upState === 'fail'
-                ? <svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" /></svg>
-                : upState === 'uploading'
-                ? <span className="spin" style={{ fontSize: '13px', color: 'var(--muted)' }}>o</span>
-                : <svg viewBox='0 0 16 16'><path d='M8 11V5M5 7l3-3 3 3M4 13h8' /></svg>
-              }
+              {upState === 'ready' ? <svg viewBox='0 0 16 16'><path d='M3 8l4 4 6-6' /></svg> : upState === 'fail' ? <svg viewBox="0 0 16 16"><path d="M4 4l8 8M12 4l-8 8" /></svg> : upState === 'uploading' ? <span className="spin" style={{ fontSize:'13px', color:'var(--muted)' }}>o</span> : <svg viewBox='0 0 16 16'><path d='M8 11V5M5 7l3-3 3 3M4 13h8' /></svg>}
             </div>
             <div className='ctrl-upload-text'>
-              <span className={'ctrl-upload-main' + (upState === 'ready' ? ' ok' : upState === 'fail' ? ' err' : upState === 'idle' ? ' dim' : '')}>
-                {upState === 'uploading' ? 'Uploading...'
-                  : upState === 'ready' ? 'Resume uploaded'
-                  : upState === 'fail' ? 'Upload failed'
-                  : 'Upload Resume'}
-              </span>
+              <span className={'ctrl-upload-main' + (upState === 'ready' ? ' ok' : upState === 'fail' ? ' err' : upState === 'idle' ? ' dim' : '')}>{upState === 'uploading' ? 'Uploading...' : upState === 'ready' ? 'Resume uploaded' : upState === 'fail' ? 'Upload failed' : 'Upload Resume'}</span>
               <span className="ctrl-upload-sub">.docx format</span>
             </div>
             <span className="ctrl-upload-arrow">&#8599;</span>
           </label>
-          <input id="file-in" type="file" accept=".docx" onChange={handleFile} style={{ display: 'none' }} />
+          <input id="file-in" type="file" accept=".docx" onChange={handleFile} style={{ display:'none' }} />
         </div>
-
-        <div className="ctrl-card a2">
-          <div className="ctrl-head"><span className="label">Difficulty</span></div>
-          <div className="ctrl-body">
-            <div className="seg">
-              {['Easy', 'Medium', 'Hard'].map(d => (
-                <button key={d} className={'seg-btn' + (diff === d ? ' on' : '')} onClick={() => setDiff(d)}>{d}</button>
-              ))}
-            </div>
-          </div>
-        </div>
-
-        {gdMode === 'interview' && (
-          <div className="ctrl-card a3">
-            <div className="ctrl-head"><span className="label">Type</span></div>
-            <div className="ctrl-body">
-              <div className="seg">
-                {['Technical', 'HR'].map(t => (
-                  <button key={t} className={'seg-btn' + (itype === t ? ' on' : '')} onClick={() => setItype(t)}>{t}</button>
-                ))}
-              </div>
-            </div>
-          </div>
-        )}
-
+        <div className="ctrl-card a2"><div className="ctrl-head"><span className="label">Difficulty</span></div><div className="ctrl-body"><div className="seg">{['Easy','Medium','Hard'].map(d => <button key={d} className={'seg-btn' + (diff === d ? ' on' : '')} onClick={() => setDiff(d)}>{d}</button>)}</div></div></div>
+        {gdMode === 'interview' && <div className="ctrl-card a3"><div className="ctrl-head"><span className="label">Type</span></div><div className="ctrl-body"><div className="seg">{['Technical','HR'].map(t => <button key={t} className={'seg-btn' + (itype === t ? ' on' : '')} onClick={() => setItype(t)}>{t}</button>)}</div></div></div>}
         {gdMode === 'gd' && (
-          <div className="ctrl-card a3 gd-topic-ctrl">
-            <div className="ctrl-head"><span className="label">GD Topic</span></div>
+          <div className="ctrl-card a3 gd-topic-ctrl"><div className="ctrl-head"><span className="label">GD Topic</span></div>
             <div className="ctrl-body gd-topic-body">
-              <div className="gd-topic-toggle">
-                <button className={'seg-btn' + (!gdCustom ? ' on' : '')} onClick={() => setGdCustom(false)}>Preset</button>
-                <button className={'seg-btn' + (gdCustom ? ' on' : '')} onClick={() => setGdCustom(true)}>Custom</button>
-              </div>
+              <div className="gd-topic-toggle"><button className={'seg-btn' + (!gdCustom ? ' on' : '')} onClick={() => setGdCustom(false)}>Preset</button><button className={'seg-btn' + (gdCustom ? ' on' : '')} onClick={() => setGdCustom(true)}>Custom</button></div>
               {
-            !gdCustom ?
-                <select className = 'gd-topic-select' value = {
-                     gdTopic} onChange = {e => setGdTopic(e.target.value)}> {GD_TOPICS.map((t, i) => <option key={i} value={t}>{t}</option>)}
-                  </select>
-                : <input className='gd-topic-input' type='text' placeholder='Enter GD topic...'
-              value = {gdCustomT} onChange =
-                  {e => setGdCustomT(e.target.value)} maxLength =
-              {
-                120
-              } />
-              }
-            </div >
-                  </div>
+      !gdCustom ? <select className = 'gd-topic-select' value = {
+                       gdTopic} onChange = {e => setGdTopic(e.target.value)}> {GD_TOPICS.map((t, i) => <option key={i} value={t}>{t}</option>)}</select>
+                : <input className='gd-topic-input' type='text' placeholder='Enter GD topic...' value={gdCustomT} onChange={e => setGdCustomT(e.target.value)} maxLength={
+          120} />}
+            </div>
+          </div>
         )}
       </div>
-
-                  {gdMode === 'interview' &&
-                   (<button className =
-                         {'land-cta a4' +
-                          (upState === 'ready' && !analysing ?
-                               '' :
-                               ' off')} onClick = {analyse}>{
-                        analysing ? 'Analysing...' : 'Begin Interview'} <
-                    /button>
-      )}
-      {gdMode === 'gd' && (
-        <button className={'land-cta gd-cta a4' + (upState === 'ready' ? '' : ' off')} onClick={startGd}>
-          Join Discussion
-        </button >)} {gdMode === 'stress' && (
-        <button className={'land-cta stress-cta a4' + (upState === 'ready' ? '' : ' off')} onClick={startStress}>
-          Start Stress Interview
-        </button>
-      )}
-      {gdMode === 'interview' && analysing && <p className="land-status a5">Reading your resume...</p>
-                  } {gdMode !== 'interview' && upState !== 'ready' && <p className='land-status a5'>Upload your resume first</p>}
-    </div></div>
+      {gdMode === 'interview' && <button className={'land-cta a4' + (upState === 'ready' && !analysing ? '' : ' off')} onClick={analyse}>{analysing ? 'Analysing...' : 'Begin Interview'}</button>}
+      {gdMode === 'gd'        && <button className={'land-cta gd-cta a4' + (upState === 'ready' ? '' : ' off')} onClick={startGd}>Join Discussion</button>}
+      {
+          gdMode ===
+              'stress' &&<
+                  button className =
+                      {'land-cta stress-cta a4' +
+                       (upState === 'ready' ? '' :
+                                              ' off')} onClick = {startStress}>
+                  Start Stress Interview<
+                      /button>}
+      {gdMode === 'interview' && analysing && <p className="land-status a5">Reading your resume...</p>}
+      {
+          gdMode !== 'interview' &&upState !==
+              'ready' &&<p className = 'land-status a5'>Upload your resume
+        first</p>}
+    </div>< /div>
   );
 }
