@@ -1392,7 +1392,7 @@ export default function App() {
     return (
       <div className="iv">
         <aside className="iv-side">
-          <div className="ivs-brand"><div className="ivs-logo"><svg viewBox="0 0 12 12"><path d="M2 6h8M6 2v8" strokeLinecap="round" /></svg></div><span className='ivs-name'>Practice Room</span></div>
+          <div className="ivs-brand"><div className="ivs-logo"><svg viewBox="0 0 12 12"><path d="M2 6h8M6 2v8" strokeLinecap="round" /></svg></div><span className='ivs-name'></span></div>
           <div className='ivs-prog'><div className='ivs-prog-bar'><div className='ivs-prog-fill' style={
                 { width: progPct + '%' }} /></div><div className='ivs-prog-nums'><span>{
                 step}/{TOTAL_Q}</span><span>{Math.round(progPct)}%</span></div></div>
@@ -1530,7 +1530,7 @@ export default function App() {
   return (
     <div className="land"><div className="land-box">
       <div className="land-head a0">
-        <div className="land-brand"><div className="land-logo"><svg viewBox="0 0 16 16"><path d="M4 8h8M8 4v8" strokeLinecap="round" /></svg></div><h1 className='land-title'>Practice Room</h1></div>
+        <div className="land-brand"><div className="land-logo"><svg viewBox="0 0 16 16"><path d="M4 8h8M8 4v8" strokeLinecap="round" /></svg></div><h1 className='land-title'></h1></div>
         <button className='hist-btn' onClick={() => setScreen('history')}>
           <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'><circle cx='8' cy='8' r='6' /><path d='M8 5v3l2 2' /></svg>
           History
