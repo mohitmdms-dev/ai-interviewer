@@ -533,10 +533,14 @@ function ScorePills({ items, color }) {
 function HistoryScreen({ onClose }) {
   const [list, setList] = useState(() => DB.load());
   const [view, setView] = useState(null);
-  const modeLabel = s => s.mode === 'interview' ? s.itype + ' /' + s.diff : s.mode === ' gd
-      ' ? ' Group Discussion / ' + s.diff : ' Stress Interview / ' + s.diff;
-
-          if (view) {
+  const modeLabel = s =>
+  s.mode === 'interview'
+    ? s.itype + ' / ' + s.diff: s
+                      .mode ===
+              'gd' ?
+          'Group Discussion / ' + s.diff :
+          'Stress Interview / ' + s.diff;
+      if (view) {
         const p = pct(view.totalScore, view.maxScore);
     return (
       <div className='results'><div className='res-inner'>
@@ -1355,7 +1359,7 @@ export default function App() {
                               }>Prepare</span></div>
                               <p className = 'res-learn-gap'>
                               <span className = 'res-learn-gap-icon'>&
-      # 8594;
+    # 8594;
                           </span>Study these before attempting this topic</p>
                           <ResourceGrid resources = {
                             group.resources || []
