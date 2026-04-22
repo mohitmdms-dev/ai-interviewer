@@ -10,7 +10,7 @@ const app = express();
 const upload = multer();
 const groq = new Groq({apiKey: process.env.GROQ_API_KEY});
 
-app.use(cors({origin: process.env.FRONTEND_URL || 'http://localhost:3000'}));
+app.use(cors());
 app.use(express.json());
 
 let resumeText = '';
