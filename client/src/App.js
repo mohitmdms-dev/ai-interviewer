@@ -1530,7 +1530,7 @@ export default function App() {
   return (
     <div className="land"><div className="land-box">
       <div className="land-head a0">
-        <div className="land-brand"><div className="land-logo"><svg viewBox="0 0 16 16"><path d="M4 8h8M8 4v8" strokeLinecap="round" /></svg></div><h1 className='land-title'></h1></div>
+        <div className="land-brand"><div className="land-logo"><svg viewBox="0 0 16 16"><path d="M4 8h8M8 4v8" strokeLinecap="round" /></svg></div><h1 className='land-title'>Interview Session</h1></div>
         <button className='hist-btn' onClick={() => setScreen('history')}>
           <svg viewBox='0 0 16 16' fill='none' stroke='currentColor' strokeWidth='1.5' strokeLinecap='round'><circle cx='8' cy='8' r='6' /><path d='M8 5v3l2 2' /></svg>
           History
