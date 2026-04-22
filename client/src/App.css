@@ -1063,9 +1063,13 @@ body{
   animation:spin .7s linear infinite;
 }
 @keyframes spin{to{transform:rotate(360deg);}}
-  font-size:11px;font-weight:500;color:var(--red);
+  .iv-error{
+  font-size:11px;
+  font-weight:500;
+  color:var(--red);
   padding:8px 14px;
-  background:rgba(224,85,85,.07);border:1px solid rgba(224,85,85,.15);
+  background:rgba(224,85,85,.07);
+  border:1px solid rgba(224,85,85,.15);
   border-radius:var(--r2);
 }
 
